@@ -22,6 +22,7 @@ export interface SocialLinks {
   github?: string;
   portfolio?: string;
   otherSocialMedia?: string;
+  calendly?: string;
 }
 
 export interface Candidate {
@@ -41,6 +42,7 @@ export interface Candidate {
   skills: string[];
   whyGreatFit: string;
   socialLinks: SocialLinks;
+  calendly?: string;
   resume?: {
     file: File;
     htmlContent: string;

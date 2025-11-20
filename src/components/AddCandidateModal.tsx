@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload, Loader2, Save, Edit2 } from 'lucide-react';
 import { Candidate } from '../types';
 import { parseResumeWithAI, convertDocxToText } from '../services/resumeParserService';
@@ -9,15 +9,34 @@ interface AddCandidateModalProps {
   open: boolean;
   onClose: () => void;
   onSave: (candidate: Candidate) => void;
+  editingCandidate?: Candidate | null; // Optional: if provided, opens in edit mode
 }
 
-const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, onSave }) => {
+const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, onSave, editingCandidate }) => {
   const [step, setStep] = useState<'upload' | 'editing'>('upload');
   const [isLoading, setIsLoading] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [candidateData, setCandidateData] = useState<Partial<Candidate> | null>(null);
-  const [chatGPTResponse, setChatGPTResponse] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // When editingCandidate changes or modal opens, populate form with existing data
+  React.useEffect(() => {
+    if (open && editingCandidate) {
+      // Edit mode: populate form with existing candidate data
+      setCandidateData(editingCandidate);
+      setStep('editing');
+      setResumeFile(editingCandidate.resume?.file || null);
+    } else if (open && !editingCandidate) {
+      // Add mode: reset form
+      setStep('upload');
+      setCandidateData(null);
+      setResumeFile(null);
+    }
+  }, [open, editingCandidate]);
+
+  // Debug: Log when candidateData changes
+  React.useEffect(() => {
+  }, [candidateData, step]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -33,22 +52,12 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
 
     try {
       // STEP 1: Convert DOCX to text
-      console.log('=== STEP 1: Converting DOCX to text ===');
       const resumeText = await convertDocxToText(file);
-      console.log('Resume text extracted. Length:', resumeText.length);
-      console.log('Resume text preview:', resumeText.substring(0, 300));
       
       // STEP 2: Parse resume with AI
-      console.log('=== STEP 2: Calling ChatGPT API ===');
       const { data: parsedData, rawJson } = await parseResumeWithAI(resumeText);
       
-      // STEP 3: Store the raw JSON response for display
-      console.log('=== STEP 3: Storing JSON response ===');
-      console.log('Raw JSON from ChatGPT:', rawJson);
-      setChatGPTResponse(rawJson);
       
-      console.log('=== STEP 4: Parsed data received ===');
-      console.log('Parsed data:', parsedData);
 
       // Convert DOCX to HTML for display
       const arrayBuffer = await file.arrayBuffer();
@@ -59,7 +68,6 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
       const contacts = extractContacts(htmlContent);
       htmlContent = removeContactsFromHtml(htmlContent, contacts);
 
-      console.log('=== STEP 4: Mapping parsed data to candidate format ===');
       
       // Map parsed data to candidate format
       // Ensure arrays are properly initialized
@@ -73,9 +81,6 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
         ? parsedData.company_names.filter(c => c && c.trim() !== '')
         : [];
       
-      console.log('Filtered main industries:', mainIndustries);
-      console.log('Filtered related industries:', relatedIndustries);
-      console.log('Filtered company names:', companyNames);
       
       // Process LinkedIn - prioritize parsed data, fallback to extracted contacts
       let linkedinUrl = parsedData.linkedin && parsedData.linkedin !== 'Not found' ? parsedData.linkedin : null;
@@ -94,6 +99,7 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
       const phone = parsedData.phone_number && parsedData.phone_number !== 'Not found'
         ? parsedData.phone_number
         : (contacts.phone || null);
+      
       
       const newCandidate: Partial<Candidate> = {
         name: parsedData.full_name || '',
@@ -128,32 +134,17 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
       };
 
       // Debug: log parsed data
-      console.log('=== RESUME PARSING DEBUG ===');
-      console.log('Raw parsed data from ChatGPT:', parsedData);
-      console.log('Main industries (filtered):', mainIndustries);
-      console.log('Related industries (filtered):', relatedIndustries);
-      console.log('Company names (filtered):', companyNames);
-      console.log('Final candidate data:', newCandidate);
-      console.log('Industries array length:', newCandidate.industries?.length);
-      console.log('Related industries array length:', newCandidate.relatedIndustries?.length);
-      console.log('Company names array length:', newCandidate.companyNames?.length);
 
-      console.log('=== STEP 5: Setting candidate data and opening editing form ===');
-      console.log('Full candidate object:', newCandidate);
-      console.log('Industries array:', newCandidate.industries);
-      console.log('Industries length:', newCandidate.industries?.length);
-      console.log('Related industries array:', newCandidate.relatedIndustries);
-      console.log('Related industries length:', newCandidate.relatedIndustries?.length);
-      console.log('Company names array:', newCandidate.companyNames);
-      console.log('Company names length:', newCandidate.companyNames?.length);
-      console.log('ChatGPT JSON response stored:', chatGPTResponse ? 'Yes' : 'No');
+      
       
       setCandidateData(newCandidate);
       setStep('editing');
       
-      console.log('=== STEP 6: Form opened with pre-filled data ===');
+      
+      // Force a re-render check
+      setTimeout(() => {
+      }, 100);
     } catch (error) {
-      console.error('Error processing resume:', error);
       alert('Error processing resume. Please try again.');
     } finally {
       setIsLoading(false);
@@ -176,13 +167,20 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
       return;
     }
 
+    // Calendly is required
+    const calendlyUrl = candidateData.calendly || candidateData.socialLinks?.calendly;
+    if (!calendlyUrl || calendlyUrl.trim() === '') {
+      alert('Calendly link is required. Please enter a valid Calendly URL.');
+      return;
+    }
+
     // Ensure LinkedIn is properly formatted
     if (!linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }
 
     const newCandidate: Candidate = {
-      id: Date.now(), // Temporary ID
+      id: editingCandidate?.id || Date.now(), // Use existing ID if editing
       name: candidateData.name || '',
       jobTitle: candidateData.jobTitle || '',
       location: candidateData.location || 'Not specified',
@@ -200,7 +198,9 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
       socialLinks: {
         ...candidateData.socialLinks,
         linkedin: linkedinUrl,
+        calendly: calendlyUrl,
       },
+      calendly: calendlyUrl,
       resume: candidateData.resume ? {
         ...candidateData.resume,
         contacts: {
@@ -240,7 +240,7 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
         {/* Header */}
         <div className="bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] p-4 rounded-t-xl flex items-center justify-between">
           <h2 className="text-white font-semibold text-lg">
-            {step === 'upload' ? 'Add New Candidate' : 'Edit Candidate Information'}
+            {editingCandidate ? 'Edit Candidate Information' : (step === 'upload' ? 'Add New Candidate' : 'Edit Candidate Information')}
           </h2>
           <button
             onClick={handleClose}
@@ -517,22 +517,25 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
                   />
                 </div>
 
-                {/* ChatGPT JSON Response */}
+                {/* Calendly Link */}
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    ChatGPT JSON Response
-                    <span className="text-xs text-gray-500 ml-2">(Raw output from AI)</span>
+                    Calendly Link *
+                    <span className="text-xs text-red-600 ml-1">(Required)</span>
                   </label>
-                  <textarea
-                    value={chatGPTResponse}
-                    readOnly
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                    rows={12}
-                    placeholder="JSON response from ChatGPT will appear here..."
+                  <input
+                    type="url"
+                    value={candidateData?.calendly || candidateData?.socialLinks?.calendly || ''}
+                    onChange={(e) => {
+                      const url = e.target.value;
+                      updateCandidateField('calendly', url);
+                      updateCandidateField('socialLinks', { ...candidateData?.socialLinks, calendly: url });
+                    }}
+                    placeholder="https://calendly.com/username"
+                    className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                    required
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    This is the complete JSON response from ChatGPT. All fields above are populated from this data.
-                  </p>
+                  <p className="text-xs text-red-600 mt-1">Calendly link is required for scheduling meetings</p>
                 </div>
               </div>
             </div>

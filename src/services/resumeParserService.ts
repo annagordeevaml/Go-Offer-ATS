@@ -45,7 +45,21 @@ const RESUME_PARSING_PROMPT = `I'll give you a resume. You need to parse a data 
 12) Other social media if mentioned. If you can not find it - write "Not found"
 13) All companies names where the candidate worked
 
-Make a json output
+Make a json output with the following exact keys (use snake_case):
+- full_name
+- main_job_title
+- main_industries (array)
+- other_related_industries (array)
+- location
+- linkedin
+- github
+- portfolio
+- total_work_experience_years (number)
+- last_updated_date (format: YYYY-MM-DD)
+- phone_number
+- email
+- other_social_media
+- company_names (array)
 
 In all questions do not add your personal thoughts or explanations. Just an answer to my question
 
@@ -93,9 +107,9 @@ export const parseResumeWithAI = async (resumeText: string): Promise<{ data: Par
     console.log('Raw response content:', content);
     
     // Try to parse JSON, handle potential formatting issues
-    let parsed: ParsedResumeData;
+    let rawParsed: any;
     try {
-      parsed = JSON.parse(content) as ParsedResumeData;
+      rawParsed = JSON.parse(content);
       console.log('Successfully parsed JSON');
     } catch (error) {
       console.error('Error parsing JSON response:', error);
@@ -103,36 +117,103 @@ export const parseResumeWithAI = async (resumeText: string): Promise<{ data: Par
       // Try to extract JSON from markdown code blocks if present
       const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || content.match(/(\{[\s\S]*\})/);
       if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[1]) as ParsedResumeData;
+        rawParsed = JSON.parse(jsonMatch[1]);
         console.log('Successfully extracted JSON from markdown');
       } else {
         throw new Error('Failed to parse JSON response from ChatGPT');
       }
     }
     
-    console.log('=== PARSED DATA ===');
-    console.log('Parsed object:', parsed);
-    console.log('Main industries:', parsed.main_industries);
-    console.log('Related industries:', parsed.other_related_industries);
-    console.log('Company names:', parsed.company_names);
+    console.log('=== RAW PARSED DATA ===');
+    console.log('Raw parsed object:', rawParsed);
+    console.log('Raw parsed keys:', Object.keys(rawParsed));
+    
+    // Normalize keys - handle different formats from ChatGPT
+    // ChatGPT might return: "Full name", "full_name", "Full Name", etc.
+    const normalizeKey = (key: string): string => {
+      const lowerKey = key.toLowerCase().trim();
+      // Map common variations to expected keys
+      const keyMap: { [key: string]: string } = {
+        'full name': 'full_name',
+        'fullname': 'full_name',
+        'main job title': 'main_job_title',
+        'mainjobtitle': 'main_job_title',
+        'job title': 'main_job_title',
+        'industries': 'main_industries',
+        'main industries': 'main_industries',
+        'other related industries': 'other_related_industries',
+        'otherrelatedindustries': 'other_related_industries',
+        'related industries': 'other_related_industries',
+        'linkedin link': 'linkedin',
+        'linkedin': 'linkedin',
+        'github link': 'github',
+        'github': 'github',
+        'portfolio link': 'portfolio',
+        'portfolio': 'portfolio',
+        'total work experience in years': 'total_work_experience_years',
+        'totalworkexperienceinyears': 'total_work_experience_years',
+        'work experience': 'total_work_experience_years',
+        'experience': 'total_work_experience_years',
+        'last updated date': 'last_updated_date',
+        'lastupdateddate': 'last_updated_date',
+        'phone number': 'phone_number',
+        'phonenumber': 'phone_number',
+        'phone': 'phone_number',
+        'email': 'email',
+        'other social media': 'other_social_media',
+        'othersocialmedia': 'other_social_media',
+        'all companies names where the candidate worked': 'company_names',
+        'company names': 'company_names',
+        'companies': 'company_names',
+        'companies names': 'company_names',
+        'location': 'location',
+      };
+      return keyMap[lowerKey] || lowerKey.replace(/\s+/g, '_');
+    };
+    
+    // Normalize the parsed object
+    const normalized: any = {};
+    for (const key in rawParsed) {
+      const normalizedKey = normalizeKey(key);
+      normalized[normalizedKey] = rawParsed[key];
+    }
+    
+    console.log('=== NORMALIZED DATA ===');
+    console.log('Normalized object:', normalized);
+    console.log('Normalized keys:', Object.keys(normalized));
     
     // Ensure all required fields have default values
     const result: ParsedResumeData = {
-      full_name: parsed.full_name || '',
-      main_job_title: parsed.main_job_title || '',
-      main_industries: Array.isArray(parsed.main_industries) ? parsed.main_industries : [],
-      other_related_industries: Array.isArray(parsed.other_related_industries) ? parsed.other_related_industries : [],
-      location: parsed.location || '',
-      linkedin: parsed.linkedin || 'Not found',
-      github: parsed.github || 'Not found',
-      portfolio: parsed.portfolio || 'Not found',
-      total_work_experience_years: parsed.total_work_experience_years || 0,
-      last_updated_date: parsed.last_updated_date || new Date().toISOString().split('T')[0],
-      phone_number: parsed.phone_number || 'Not found',
-      email: parsed.email || 'Not found',
-      other_social_media: parsed.other_social_media || 'Not found',
-      company_names: Array.isArray(parsed.company_names) ? parsed.company_names : [],
+      full_name: normalized.full_name || normalized.fullname || '',
+      main_job_title: normalized.main_job_title || normalized.job_title || '',
+      main_industries: Array.isArray(normalized.main_industries) 
+        ? normalized.main_industries 
+        : (Array.isArray(normalized.industries) ? normalized.industries : []),
+      other_related_industries: Array.isArray(normalized.other_related_industries) 
+        ? normalized.other_related_industries 
+        : [],
+      location: normalized.location || '',
+      linkedin: normalized.linkedin || normalized.linkedin_link || 'Not found',
+      github: normalized.github || normalized.github_link || 'Not found',
+      portfolio: normalized.portfolio || normalized.portfolio_link || 'Not found',
+      total_work_experience_years: normalized.total_work_experience_years || normalized.work_experience || normalized.experience || 0,
+      last_updated_date: normalized.last_updated_date || normalized.last_updated || new Date().toISOString().split('T')[0],
+      phone_number: normalized.phone_number || normalized.phone || 'Not found',
+      email: normalized.email || 'Not found',
+      other_social_media: normalized.other_social_media || 'Not found',
+      company_names: Array.isArray(normalized.company_names) 
+        ? normalized.company_names 
+        : (Array.isArray(normalized.companies) ? normalized.companies : []),
     };
+    
+    console.log('=== FINAL NORMALIZED RESULT ===');
+    console.log('Final result:', result);
+    console.log('Full name:', result.full_name);
+    console.log('Main job title:', result.main_job_title);
+    console.log('Main industries:', result.main_industries);
+    console.log('Related industries:', result.other_related_industries);
+    console.log('Location:', result.location);
+    console.log('Company names:', result.company_names);
     
     console.log('=== STEP 4: Normalized result ===');
     console.log('Final result:', result);

@@ -17,6 +17,7 @@ interface SearchResultsPageProps {
 const SearchResultsPage: React.FC<SearchResultsPageProps> = ({ onNavigate }) => {
   const [searchQuery, setSearchQuery] = useState<string>('Senior Backend Engineer');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingCandidate, setEditingCandidate] = useState<Candidate | null>(null);
   
   const [candidates, setCandidates] = useState<Candidate[]>([
     {
@@ -272,6 +273,7 @@ const SearchResultsPage: React.FC<SearchResultsPageProps> = ({ onNavigate }) => 
                   candidate={candidate} 
                   onResumeUpload={handleResumeUpload}
                   onCandidateUpdate={handleCandidateUpdate}
+                  onEdit={(candidate) => setEditingCandidate(candidate)}
                 />
               </motion.div>
             ))}
@@ -280,12 +282,25 @@ const SearchResultsPage: React.FC<SearchResultsPageProps> = ({ onNavigate }) => 
       </main>
       <ChatBot />
       <AddCandidateModal
-        open={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onSave={(newCandidate) => {
-          setCandidates((prev) => [...prev, newCandidate]);
+        open={isAddModalOpen || editingCandidate !== null}
+        onClose={() => {
           setIsAddModalOpen(false);
+          setEditingCandidate(null);
         }}
+        onSave={(candidate) => {
+          if (editingCandidate) {
+            // Update existing candidate
+            setCandidates((prev) =>
+              prev.map((c) => (c.id === candidate.id ? candidate : c))
+            );
+            setEditingCandidate(null);
+          } else {
+            // Add new candidate
+            setCandidates((prev) => [...prev, candidate]);
+            setIsAddModalOpen(false);
+          }
+        }}
+        editingCandidate={editingCandidate}
       />
     </div>
   );

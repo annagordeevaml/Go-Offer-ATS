@@ -20,10 +20,12 @@ import {
   Upload,
   Eye,
   Briefcase,
+  Edit2,
 } from 'lucide-react';
 import { Candidate } from '../types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 import ResumeViewer from './ResumeViewer';
+import ContactModal from './ContactModal';
 import mammoth from 'mammoth';
 import { extractContacts, removeContactsFromHtml } from '../utils/resumeParser';
 
@@ -31,9 +33,10 @@ interface CandidateCardProps {
   candidate: Candidate;
   onResumeUpload?: (candidateId: number, resume: { file: File; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } }) => void;
   onCandidateUpdate?: (candidateId: number, updates: Partial<Candidate>) => void;
+  onEdit?: (candidate: Candidate) => void;
 }
 
-const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload, onCandidateUpdate }) => {
+const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload, onCandidateUpdate, onEdit }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRelocationOpen, setIsRelocationOpen] = useState(false);
   const [resume, setResume] = useState<{ file: File; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } } | null>(
@@ -47,6 +50,8 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
     }
   }, [candidate.resume]);
   const [isResumeViewerOpen, setIsResumeViewerOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [isRelatedIndustriesOpen, setIsRelatedIndustriesOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const relocationRef = useRef<HTMLDivElement>(null);
 
@@ -80,13 +85,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
 
   const handleContact = (e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    const contacts = candidate.resume?.contacts || resume?.contacts;
-    const email = contacts?.email || `${candidate.name.toLowerCase().replace(' ', '.')}@example.com`;
-    const phone = contacts?.phone || '+1 (555) 123-4567';
-    
-    const contactInfo = `Contact ${candidate.name}\n\nEmail: ${email}\nPhone: ${phone}`;
-    alert(contactInfo);
+    setIsContactModalOpen(true);
   };
 
   const handleAddToPipeline = (e: React.MouseEvent) => {
@@ -240,33 +239,74 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
                 ))}
               </div>
             )}
-            {/* Related Industries */}
+            {/* Related Industries - Clickable */}
             {candidate.relatedIndustries && candidate.relatedIndustries.length > 0 && (
               <div className="flex flex-wrap gap-1 items-start mb-1">
-                <span className="text-[9px] text-white/70 mr-1">Related:</span>
-                {candidate.relatedIndustries.slice(0, 3).map((industry, idx) => (
-                  <span
-                    key={idx}
-                    className="bg-white/15 backdrop-blur-sm border border-white/20 text-white rounded px-1.5 py-0.5 text-[9px] font-medium"
-                  >
-                    {industry}
-                  </span>
-                ))}
-                {candidate.relatedIndustries.length > 3 && (
-                  <span className="text-[9px] text-white/60">+{candidate.relatedIndustries.length - 3}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsRelatedIndustriesOpen(!isRelatedIndustriesOpen);
+                  }}
+                  className="text-[9px] text-white/70 mr-1 hover:text-white transition-colors flex items-center gap-1"
+                >
+                  Related:
+                  <ChevronDown className={`w-2.5 h-2.5 transition-transform ${isRelatedIndustriesOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {isRelatedIndustriesOpen ? (
+                  <div className="flex flex-wrap gap-1">
+                    {candidate.relatedIndustries.map((industry, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-white/15 backdrop-blur-sm border border-white/20 text-white rounded px-1.5 py-0.5 text-[9px] font-medium"
+                      >
+                        {industry}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    {candidate.relatedIndustries.slice(0, 3).map((industry, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-white/15 backdrop-blur-sm border border-white/20 text-white rounded px-1.5 py-0.5 text-[9px] font-medium"
+                      >
+                        {industry}
+                      </span>
+                    ))}
+                    {candidate.relatedIndustries.length > 3 && (
+                      <span className="text-[9px] text-white/60">+{candidate.relatedIndustries.length - 3}</span>
+                    )}
+                  </>
                 )}
               </div>
             )}
           </div>
           <div className="flex flex-col items-end gap-2">
-            {/* Match Badge - top right corner */}
-            <span 
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-md text-xs font-semibold ${getMatchBadgeStyle()}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Check className="w-3 h-3" />
-              {candidate.matchScore}% Match
-            </span>
+            {/* Top row: Match Badge and Edit button */}
+            <div className="flex items-center gap-2">
+              {/* Match Badge */}
+              <span 
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-md text-xs font-semibold ${getMatchBadgeStyle()}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Check className="w-3 h-3" />
+                {candidate.matchScore}% Match
+              </span>
+              {/* Edit Button */}
+              {onEdit && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(candidate);
+                  }}
+                  className="w-7 h-7 rounded-full bg-white/20 border border-white/30 flex items-center justify-center hover:bg-white/30 transition-all duration-200 text-white focus:outline-none focus:ring-2 focus:ring-white"
+                  aria-label="Edit candidate"
+                  title="Edit candidate"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             {/* Buttons - second row */}
             <div className="flex items-center gap-2">
               <button
@@ -305,19 +345,11 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
         {/* Meta Row - Compact */}
-        <div className="flex flex-wrap gap-4 text-xs text-gray-600 mb-3">
+        <div className="flex flex-wrap gap-4 text-xs text-gray-600 mb-2">
           <div className="flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-gray-500" />
             <span>{candidate.location}</span>
           </div>
-          {/* Company Names */}
-          {candidate.companyNames && candidate.companyNames.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Briefcase className="w-3.5 h-3.5 text-gray-500" />
-              <span className="font-medium">Companies: </span>
-              <span>{candidate.companyNames.slice(0, 3).join(', ')}{candidate.companyNames.length > 3 ? ` +${candidate.companyNames.length - 3}` : ''}</span>
-            </div>
-          )}
           {candidate.readyToRelocateTo && candidate.readyToRelocateTo.length > 0 && (
             <div className="relative" ref={relocationRef}>
               <button
@@ -346,18 +378,29 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
               )}
             </div>
           )}
-          <div className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-gray-500" />
-            <span>{candidate.experience} in total</span>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-gray-500" />
+              <span>{candidate.experience} in total</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-gray-500" />
+              <span className="text-gray-500">Last updated: <span className="font-medium text-gray-700">{candidate.lastUpdated}</span></span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 text-gray-500" />
-            <span className="text-gray-500">Last updated: <span className="font-medium text-gray-700">{candidate.lastUpdated}</span></span>
-          </div>
-        </div>
+          
+          {/* Company Names - Second Row */}
+          {candidate.companyNames && candidate.companyNames.length > 0 && (
+            <div className="w-full flex items-start gap-1.5 text-xs text-gray-600 mt-1 mb-4">
+              <Briefcase className="w-3.5 h-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <span className="font-medium">Companies: </span>
+                <span className="text-gray-700">{candidate.companyNames.join(', ')}</span>
+              </div>
+            </div>
+          )}
 
         {/* Why Great Fit - Beautiful Design */}
-        <div className="mb-3 bg-gradient-to-r from-purple-50 via-cyan-50 to-purple-50 border-l-4 border-[#7C3AED] rounded-lg p-4 shadow-sm">
+        <div className="mb-3 mt-2 bg-gradient-to-r from-purple-50 via-cyan-50 to-purple-50 border-l-4 border-[#7C3AED] rounded-lg p-4 shadow-sm">
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 mt-0.5">
               <Sparkles className="w-5 h-5 text-[#7C3AED]" />
@@ -477,6 +520,13 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
           onClose={() => setIsResumeViewerOpen(false)}
         />
       )}
+      
+      {/* Contact Modal */}
+      <ContactModal
+        open={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+        candidate={candidate}
+      />
     </div>
     </>
   );
