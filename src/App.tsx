@@ -2,12 +2,18 @@ import { useState, useEffect } from 'react'
 import SearchPage from './components/SearchPage'
 import MyJobsPage from './components/MyJobsPage'
 import SearchResultsPage from './components/SearchResultsPage'
+import BenchmarkDashboard from './components/BenchmarkDashboard'
+import MatchingDashboard from './components/MatchingDashboard'
 import ChatBot from './components/ChatBot'
+import AuthPage from './components/AuthPage'
+import { useAuth } from './hooks/useAuth'
+import { Loader2 } from 'lucide-react'
 
-type Page = 'Search' | 'My Jobs' | 'Analytics' | 'Search Results'
+type Page = 'Star Catalogue' | 'My Jobs' | 'Analytics' | 'Benchmark' | 'Search Results' | 'Match'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('Search Results')
+  const [currentPage, setCurrentPage] = useState<Page>('Star Catalogue')
+  const { user, loading } = useAuth()
 
   useEffect(() => {
     const handleNavigate = (event: CustomEvent) => {
@@ -25,6 +31,24 @@ function App() {
     setCurrentPage(page)
   }
 
+  const handleAuthSuccess = () => {
+    // Auth state will update automatically via useAuth hook
+  }
+
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#1a0b2e] via-[#2d1b4e] to-[#1a0b2e] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#7C3AED] animate-spin" />
+      </div>
+    )
+  }
+
+  // Show auth page if not authenticated
+  if (!user) {
+    return <AuthPage onAuthSuccess={handleAuthSuccess} />
+  }
+
   // Simple navigation context - in production, use React Router
   if (currentPage === 'My Jobs') {
     return <MyJobsPage onNavigate={handleNavigation} />
@@ -34,8 +58,16 @@ function App() {
     return <SearchResultsPage onNavigate={handleNavigation} />
   }
 
-  if (currentPage === 'Search') {
+  if (currentPage === 'Star Catalogue') {
     return <SearchPage onNavigate={handleNavigation} />
+  }
+
+  if (currentPage === 'Benchmark') {
+    return <BenchmarkDashboard />
+  }
+
+  if (currentPage === 'Match') {
+    return <MatchingDashboard onNavigate={handleNavigation} />
   }
 
   return (

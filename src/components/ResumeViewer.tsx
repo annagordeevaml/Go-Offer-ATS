@@ -1,6 +1,5 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useRef } from 'react';
 import { X, Download } from 'lucide-react';
-import mammoth from 'mammoth';
 
 interface ResumeViewerProps {
   resumeFile: File;
@@ -28,7 +27,7 @@ const ResumeViewer: React.FC<ResumeViewerProps> = ({ resumeFile, htmlContent, on
         {/* Header */}
         <div className="bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] p-4 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-white font-semibold text-lg">Resume: {resumeFile.name}</h2>
+            <h2 className="text-white font-semibold text-lg">Resume</h2>
           </div>
           <div className="flex items-center gap-2">
             <button

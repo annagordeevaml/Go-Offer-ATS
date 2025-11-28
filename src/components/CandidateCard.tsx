@@ -4,7 +4,6 @@ import {
   Clock,
   Calendar,
   Check,
-  Circle,
   Plus,
   Phone,
   Linkedin,
@@ -21,6 +20,8 @@ import {
   Eye,
   Briefcase,
   Edit2,
+  DollarSign,
+  Trash2,
 } from 'lucide-react';
 import { Candidate } from '../types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
@@ -34,12 +35,13 @@ interface CandidateCardProps {
   onResumeUpload?: (candidateId: number, resume: { file: File; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } }) => void;
   onCandidateUpdate?: (candidateId: number, updates: Partial<Candidate>) => void;
   onEdit?: (candidate: Candidate) => void;
+  onDelete?: (candidateId: number) => void;
 }
 
-const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload, onCandidateUpdate, onEdit }) => {
+const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload, onCandidateUpdate, onEdit, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRelocationOpen, setIsRelocationOpen] = useState(false);
-  const [resume, setResume] = useState<{ file: File; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } } | null>(
+  const [resume, setResume] = useState<{ file: File | null; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } } | null>(
     candidate.resume || null
   );
   
@@ -71,17 +73,6 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
     };
   }, [isRelocationOpen]);
 
-  const getMatchBadgeStyle = () => {
-    if (candidate.matchScore >= 85) {
-      return 'bg-white/95 backdrop-blur-sm border-2 border-green-400 text-green-700 shadow-lg shadow-green-500/30 font-bold';
-    } else if (candidate.matchScore >= 70) {
-      return 'bg-white/90 backdrop-blur-sm border-2 border-green-300 text-green-600 shadow-md shadow-green-400/20';
-    } else if (candidate.matchScore < 40) {
-      return 'bg-white/90 backdrop-blur-sm border-2 border-red-400 text-red-600 shadow-md shadow-red-400/20';
-    } else {
-      return 'bg-white/90 backdrop-blur-sm border-2 border-orange-400 text-orange-600 shadow-md shadow-orange-400/20';
-    }
-  };
 
   const handleContact = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -102,21 +93,42 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.docx')) {
-      alert('Please upload a .docx file');
+    const isDocx = file.name.endsWith('.docx');
+    const isPdf = file.name.endsWith('.pdf');
+
+    if (!isDocx && !isPdf) {
+      alert('Please upload a .docx or .pdf file');
       return;
     }
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.convertToHtml({ arrayBuffer });
-      let htmlContent = result.value;
+      let htmlContent: string;
+      let contacts: { email: string | null; phone: string | null; linkedin: string | null };
 
-      // Extract contacts from resume
-      const contacts = extractContacts(htmlContent);
-      
-      // Remove contacts from HTML content
-      htmlContent = removeContactsFromHtml(htmlContent, contacts);
+      if (isDocx) {
+        // Convert DOCX to HTML
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        htmlContent = result.value;
+
+        // Extract contacts from resume
+        contacts = extractContacts(htmlContent);
+        
+        // Remove contacts from HTML content
+        htmlContent = removeContactsFromHtml(htmlContent, contacts);
+      } else if (isPdf) {
+        // Convert PDF to text first
+        const { convertPdfToText } = await import('../services/resumeParserService');
+        const pdfText = await convertPdfToText(file);
+        
+        // Create simple HTML from PDF text
+        htmlContent = `<div style="white-space: pre-wrap; font-family: Arial, sans-serif; line-height: 1.6; padding: 20px;">${pdfText.replace(/\n/g, '<br>')}</div>`;
+        
+        // Extract contacts from PDF text (basic extraction)
+        contacts = extractContacts(htmlContent);
+      } else {
+        throw new Error('Unsupported file type');
+      }
 
       const resumeData = { file, htmlContent, contacts };
       setResume(resumeData);
@@ -153,18 +165,13 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
       return;
     }
     
-    // If card is not expanded and no resume, trigger file upload
-    if (!isExpanded && !resume) {
-      fileInputRef.current?.click();
-      return;
-    }
-    
+    // Toggle card expansion
     setIsExpanded(!isExpanded);
   };
 
   const handleResumeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (resume) {
+    if (resume && resume.file) {
       setIsResumeViewerOpen(true);
     }
   };
@@ -174,7 +181,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
       <input
         ref={fileInputRef}
         type="file"
-        accept=".docx"
+        accept=".docx,.pdf"
         onChange={handleFileUpload}
         className="hidden"
       />
@@ -183,7 +190,32 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
         onClick={handleCardClick}
       >
       {/* Card Header */}
-      <div className="bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] p-4 px-5 rounded-t-xl">
+      <div className="bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] p-4 px-5 rounded-t-xl relative">
+        {/* Score Badges - Top Right Corner */}
+        <div className="absolute top-3 right-3 flex flex-col gap-2 z-10">
+          {/* Title Score Badge */}
+          {(typeof candidate.titleScore === 'number') && (
+            <div className="bg-white/95 backdrop-blur-sm border-2 border-white rounded-lg px-3 py-1.5 shadow-lg">
+              <div className="flex items-center gap-1.5">
+                <Target className="w-4 h-4 text-[#7C3AED]" />
+                <span className="text-sm font-bold text-gray-900">
+                  Title: {candidate.titleScore.toFixed(1)}
+                </span>
+              </div>
+            </div>
+          )}
+          {/* Location Match Score Badge */}
+          {(typeof candidate.locationMatchScore === 'number') && (
+            <div className="bg-white/95 backdrop-blur-sm border-2 border-white rounded-lg px-3 py-1.5 shadow-lg">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-[#06B6D4]" />
+                <span className="text-sm font-bold text-gray-900">
+                  Location: {candidate.locationMatchScore.toFixed(1)}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-0.5">
@@ -225,7 +257,16 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
                 )}
               </div>
             </div>
-            <p className="text-xs text-white/90 font-semibold mb-2">{candidate.jobTitle}</p>
+            <div className="mb-2">
+              <p className="text-sm text-white/90 font-semibold">
+                {candidate.jobTitle}
+                {candidate.unifiedTitles && candidate.unifiedTitles.length > 0 && (
+                  <span className="text-xs text-white/70 font-normal ml-1">
+                    | {candidate.unifiedTitles.join(', ')}
+                  </span>
+                )}
+              </p>
+            </div>
             {/* Main Industries - under name, smaller size, max 5 */}
             {displayedIndustries.length > 0 && (
               <div className="flex flex-wrap gap-1 items-start mb-1">
@@ -282,16 +323,49 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
             )}
           </div>
           <div className="flex flex-col items-end gap-2">
-            {/* Top row: Match Badge and Edit button */}
+            {/* Location Score - on colored background, above salary */}
+            {candidate.locationScore !== undefined && (
+              <div className="bg-white/20 backdrop-blur-sm border border-white/30 rounded-lg px-3 py-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-white" />
+                  <span className="text-sm text-white font-semibold">
+                    Location Match: {Math.round(candidate.locationScore * 100)}%
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* Salary Range - on colored background, below location score */}
+            {(candidate.salaryMin || candidate.salaryMax) && (
+              <div className="bg-white/20 backdrop-blur-sm border border-white/30 rounded-lg px-3 py-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <DollarSign className="w-4 h-4 text-white" />
+                  <span className="text-sm text-white font-semibold">
+                    {(() => {
+                      const formatSalary = (value: string) => {
+                        const num = parseFloat(value);
+                        if (isNaN(num)) return value;
+                        return new Intl.NumberFormat('en-US', { 
+                          style: 'currency', 
+                          currency: 'USD',
+                          maximumFractionDigits: 0 
+                        }).format(num);
+                      };
+                      const unit = candidate.salaryUnit || 'year';
+                      const unitLabel = unit === 'year' ? '/year' : unit === 'month' ? '/month' : '/hour';
+                      if (candidate.salaryMin && candidate.salaryMax) {
+                        return `${formatSalary(candidate.salaryMin)} - ${formatSalary(candidate.salaryMax)} ${unitLabel}`;
+                      } else if (candidate.salaryMin) {
+                        return `${formatSalary(candidate.salaryMin)}+ ${unitLabel}`;
+                      } else {
+                        return `Up to ${formatSalary(candidate.salaryMax)} ${unitLabel}`;
+                      }
+                    })()}
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* Top row: Edit and Delete buttons */}
             <div className="flex items-center gap-2">
-              {/* Match Badge */}
-              <span 
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-md text-xs font-semibold ${getMatchBadgeStyle()}`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Check className="w-3 h-3" />
-                {candidate.matchScore}% Match
-              </span>
               {/* Edit Button */}
               {onEdit && (
                 <button
@@ -306,6 +380,22 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
                   <Edit2 className="w-3.5 h-3.5" />
                 </button>
               )}
+              {/* Delete Button */}
+              {onDelete && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Are you sure you want to delete ${candidate.name}? This action cannot be undone.`)) {
+                      onDelete(candidate.id);
+                    }
+                  }}
+                  className="w-7 h-7 rounded-full bg-red-500/80 border border-red-400/50 flex items-center justify-center hover:bg-red-600/90 transition-all duration-200 text-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                  aria-label="Delete candidate"
+                  title="Delete candidate"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             {/* Buttons - second row */}
             <div className="flex items-center gap-2">
@@ -317,10 +407,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
                 Get in touch
               </button>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleAddToPipeline();
-                }}
+                onClick={handleAddToPipeline}
                 className="flex items-center gap-1.5 px-3 py-1 bg-white/20 border border-white/30 text-white rounded-md text-xs hover:bg-white/30 hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-white"
               >
                 <Plus className="w-3 h-3" />
@@ -382,6 +469,33 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
               <Clock className="w-3.5 h-3.5 text-gray-500" />
               <span>{candidate.experience} in total</span>
             </div>
+            {(candidate.salaryMin || candidate.salaryMax) && (
+              <div className="flex items-center gap-1.5">
+                <DollarSign className="w-3.5 h-3.5 text-gray-500" />
+                <span className="font-medium text-gray-700">
+                  {(() => {
+                    const formatSalary = (value: string) => {
+                      const num = parseFloat(value);
+                      if (isNaN(num)) return value;
+                      return new Intl.NumberFormat('en-US', { 
+                        style: 'currency', 
+                        currency: 'USD',
+                        maximumFractionDigits: 0 
+                      }).format(num);
+                    };
+                    const unit = candidate.salaryUnit || 'year';
+                    const unitLabel = unit === 'year' ? '/year' : unit === 'month' ? '/month' : '/hour';
+                    if (candidate.salaryMin && candidate.salaryMax) {
+                      return `${formatSalary(candidate.salaryMin)} - ${formatSalary(candidate.salaryMax)} ${unitLabel}`;
+                    } else if (candidate.salaryMin) {
+                      return `${formatSalary(candidate.salaryMin)}+ ${unitLabel}`;
+                    } else {
+                      return `Up to ${formatSalary(candidate.salaryMax)} ${unitLabel}`;
+                    }
+                  })()}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-gray-500" />
               <span className="text-gray-500">Last updated: <span className="font-medium text-gray-700">{candidate.lastUpdated}</span></span>
@@ -399,14 +513,14 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
             </div>
           )}
 
-        {/* Why Great Fit - Beautiful Design */}
-        <div className="mb-3 mt-2 bg-gradient-to-r from-purple-50 via-cyan-50 to-purple-50 border-l-4 border-[#7C3AED] rounded-lg p-4 shadow-sm">
+        {/* Summary - Beautiful Design */}
+        <div className="mb-3 mt-2 bg-white border-2 border-[#7C3AED]/20 rounded-lg p-5 shadow-md">
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0 mt-0.5">
               <Sparkles className="w-5 h-5 text-[#7C3AED]" />
             </div>
             <div className="flex-1">
-              <p className="text-sm text-gray-800 leading-relaxed font-medium">{candidate.whyGreatFit}</p>
+              <p className="text-base text-gray-900 leading-7 font-normal whitespace-pre-wrap">{candidate.summary}</p>
             </div>
           </div>
         </div>
@@ -447,18 +561,19 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
               </TabsList>
 
               <TabsContent value="resume">
-                {resume ? (
+                {resume && resume.htmlContent ? (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-sm font-medium text-gray-700">Resume: {resume.file.name}</p>
-                      <button
-                        onClick={handleResumeClick}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-300 text-[#7C3AED] rounded-lg text-xs hover:bg-purple-100 transition-all duration-200"
-                      >
-                        <Eye className="w-4 h-4" />
-                        View Full Resume
-                      </button>
-                    </div>
+                    {resume.file && (
+                      <div className="flex items-center justify-end mb-3">
+                        <button
+                          onClick={handleResumeClick}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 border border-purple-300 text-[#7C3AED] rounded-lg text-xs hover:bg-purple-100 transition-all duration-200"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Full Resume
+                        </button>
+                      </div>
+                    )}
                     {/* Resume Preview */}
                     <div className="border border-gray-200 rounded-lg bg-white max-h-96 overflow-y-auto p-4">
                       <div
@@ -474,7 +589,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".docx"
+                      accept=".docx,.pdf"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
@@ -486,9 +601,8 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
                       className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white rounded-lg text-sm hover:opacity-90 transition-opacity mx-auto resume-upload-trigger"
                     >
                       <Upload className="w-4 h-4" />
-                      Upload Resume (.docx)
+                      Upload Resume (.docx or .pdf)
                     </button>
-                    <p className="text-xs text-gray-500 mt-2">Click on the card to upload a resume file</p>
                   </div>
                 )}
               </TabsContent>
@@ -513,7 +627,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
         )}
       </div>
       {/* Resume Viewer Popup */}
-      {isResumeViewerOpen && resume && (
+      {isResumeViewerOpen && resume && resume.file && (
         <ResumeViewer
           resumeFile={resume.file}
           htmlContent={resume.htmlContent}

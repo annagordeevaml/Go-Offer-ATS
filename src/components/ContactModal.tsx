@@ -139,3 +139,5 @@ const ContactModal: React.FC<ContactModalProps> = ({ open, onClose, candidate })
 
 export default ContactModal;
 
+
+

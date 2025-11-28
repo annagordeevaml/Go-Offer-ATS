@@ -1,14 +1,19 @@
-import React from 'react';
-import { MapPin, Calendar, Users, Edit, MoreVertical } from 'lucide-react';
+import React, { useState } from 'react';
+import { MapPin, Calendar, Users, Edit, Building2, Trash2, FileText, Clock, Globe, Eye } from 'lucide-react';
 import { Job } from '../types';
+import JobDescriptionModal from './JobDescriptionModal';
 
 interface JobCardProps {
   job: Job;
   onViewMatches: (jobId: number) => void;
   onEdit: (job: Job) => void;
+  onDelete?: (jobId: number) => void;
+  onView?: (job: Job) => void;
 }
 
-const JobCard: React.FC<JobCardProps> = ({ job, onViewMatches, onEdit }) => {
+const JobCard: React.FC<JobCardProps> = ({ job, onViewMatches, onEdit, onDelete, onView }) => {
+  const [isDescriptionModalOpen, setIsDescriptionModalOpen] = useState(false);
+  
   const getStatusColor = (status: Job['status']) => {
     switch (status) {
       case 'active':
@@ -22,79 +27,181 @@ const JobCard: React.FC<JobCardProps> = ({ job, onViewMatches, onEdit }) => {
     }
   };
 
+  const locations = job.locations && job.locations.length > 0 
+    ? job.locations 
+    : (job.location ? [job.location] : []);
+
   return (
-    <div className="relative bg-white/5 backdrop-blur-md border border-purple-500/30 rounded-2xl p-6 transition-all duration-300 hover:scale-105 hover:border-purple-500 hover:shadow-lg hover:shadow-purple-500/50 group">
-      {/* Left accent stripe */}
-      <div
-        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
-        style={{ backgroundColor: getStatusColor(job.status) }}
-      />
+    <>
+      <div className="relative bg-white rounded-xl shadow-md border border-gray-200 p-6 transition-all duration-300 hover:shadow-lg group">
+        {/* Header Section - LinkedIn style */}
+        <div className="mb-4">
+          {/* Company Name */}
+          {job.companyName && (
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 className="w-5 h-5 text-[#7C3AED]" />
+              <span className="text-base font-semibold text-gray-900">{job.companyName}</span>
+            </div>
+          )}
 
-      {/* Card content */}
-      <div className="ml-2">
-        {/* Job title */}
-        <h3 className="text-2xl font-bold text-white mb-4 group-hover:text-[#7C3AED] transition-colors duration-300">
-          {job.title}
-        </h3>
+          {/* Job Title */}
+          <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-[#7C3AED] transition-colors duration-300">
+            {job.title}
+          </h3>
 
-        {/* Location */}
-        <div className="flex items-center gap-2 text-purple-300 mb-3">
-          <MapPin className="w-4 h-4" />
-          <span className="text-sm">{job.location}</span>
+          {/* Unified Titles */}
+          {job.unifiedTitles && job.unifiedTitles.length > 0 && (
+            <div className="mb-2">
+              <span className="text-sm text-gray-600">
+                {job.unifiedTitles.join(' • ')}
+              </span>
+            </div>
+          )}
+
+          {/* Location, Workplace Type, Employment Type - LinkedIn style */}
+          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-3">
+            {locations.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-gray-500" />
+                <span>{locations.join(', ')}</span>
+              </div>
+            )}
+            {job.workplaceType && (
+              <div className="flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-gray-500" />
+                <span>{job.workplaceType}</span>
+              </div>
+            )}
+            {job.employmentType && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-gray-500" />
+                <span>{job.employmentType}</span>
+              </div>
+            )}
+            {job.seniorityLevel && job.seniorityLevel !== 'Not Applicable' && (
+              <span className="text-gray-500">• {job.seniorityLevel}</span>
+            )}
+          </div>
+
+          {/* Posted Date */}
+          {job.postedDate && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-4">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Posted {job.postedDate}</span>
+            </div>
+          )}
         </div>
 
-        {/* Posted date */}
-        <div className="flex items-center gap-2 text-[#e0e7ff]/70 mb-4">
-          <Calendar className="w-4 h-4" />
-          <span className="text-sm">Posted {job.postedDate}</span>
-        </div>
+        {/* Job Description Preview - LinkedIn style */}
+        {job.description && (
+          <div className="mb-4">
+            <div className="text-sm text-gray-700 line-clamp-3 whitespace-pre-wrap mb-2">
+              {job.description}
+            </div>
+            <button
+              onClick={() => setIsDescriptionModalOpen(true)}
+              className="text-sm text-[#7C3AED] hover:text-[#06B6D4] font-medium flex items-center gap-1 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              See more
+            </button>
+          </div>
+        )}
+
+        {/* Industries - LinkedIn style tags */}
+        {job.industry && job.industry.length > 0 && (
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2">
+              {job.industry.slice(0, 3).map((ind, idx) => (
+                <span
+                  key={idx}
+                  className="px-3 py-1 bg-green-50 border border-green-200 text-green-800 rounded-full text-xs font-medium"
+                >
+                  {ind}
+                </span>
+              ))}
+              {job.industry.length > 3 && (
+                <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                  +{job.industry.length - 3} more
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Skills - LinkedIn style tags */}
+        {job.skills && job.skills.length > 0 && (
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2">
+              {job.skills.slice(0, 5).map((skill, idx) => (
+                <span
+                  key={idx}
+                  className="px-3 py-1 bg-gray-100 border border-gray-300 text-gray-700 rounded-full text-xs font-medium"
+                >
+                  {skill}
+                </span>
+              ))}
+              {job.skills.length > 5 && (
+                <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
+                  +{job.skills.length - 5} more
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Match count badge */}
         <div className="mb-4">
-          <span className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white rounded-full text-sm font-semibold animate-pulse">
+          <span className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white rounded-full text-sm font-semibold shadow-sm">
             <Users className="w-4 h-4" />
             {job.matchCount} matches
           </span>
         </div>
 
-        {/* Skills */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          {job.skills.map((skill, index) => (
-            <span
-              key={index}
-              className="px-3 py-1 bg-purple-500/20 border border-purple-500/50 rounded-full text-xs text-purple-200"
+        {/* Card footer - Actions */}
+        <div className="flex gap-3 pt-4 border-t border-gray-200">
+          {onView && (
+            <button
+              onClick={() => onView(job)}
+              className="px-4 py-2.5 border-2 border-[#7C3AED] text-[#7C3AED] font-semibold rounded-lg hover:bg-purple-50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] focus:ring-offset-2 flex items-center gap-2"
             >
-              {skill}
-            </span>
-          ))}
-        </div>
-
-        {/* Card footer */}
-        <div className="flex gap-3">
+              <Eye className="w-4 h-4" />
+              View
+            </button>
+          )}
           <button
             onClick={() => onViewMatches(job.id)}
-            className="flex-1 px-4 py-2 bg-gradient-to-r from-[#7C3AED] to-[#ec4899] text-white font-semibold rounded-lg hover:shadow-[0_0_20px_rgba(124,58,237,0.6)] transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+            className="flex-1 px-4 py-2.5 bg-[#0A66C2] text-white font-semibold rounded-lg hover:bg-[#084d94] transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#0A66C2] focus:ring-offset-2"
           >
-            View Matches
+            Find Matches
           </button>
           <button
             onClick={() => onEdit(job)}
-            className="px-4 py-2 border-2 border-purple-500 text-purple-300 font-semibold rounded-lg hover:bg-purple-500/20 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] flex items-center gap-2"
+            className="px-4 py-2.5 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 flex items-center gap-2"
           >
             <Edit className="w-4 h-4" />
             Edit
           </button>
-          <button
-            className="p-2 border-2 border-purple-500/50 text-purple-300 rounded-lg hover:bg-purple-500/20 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-            aria-label="More options"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
+          {onDelete && (
+            <button
+              onClick={() => onDelete(job.id)}
+              className="p-2.5 border-2 border-red-300 text-red-600 rounded-lg hover:bg-red-50 hover:border-red-400 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2"
+              aria-label="Delete job"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
-    </div>
+      
+      {/* Job Description Modal */}
+      <JobDescriptionModal
+        job={job}
+        isOpen={isDescriptionModalOpen}
+        onClose={() => setIsDescriptionModalOpen(false)}
+      />
+    </>
   );
 };
 
 export default JobCard;
-

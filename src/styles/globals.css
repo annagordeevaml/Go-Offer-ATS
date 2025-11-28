@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom scrollbar for dropdowns */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(124, 58, 237, 0.1);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.5);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.7);
+}
+
 @layer utilities {
   /* Animated gradient background */
   @keyframes gradient-x {
@@ -185,28 +204,32 @@ body {
 /* Search Bar Styling */
 .search-bar-container {
   position: relative;
-  background: rgba(124, 58, 237, 0.02) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
   box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 0 30px rgba(124, 58, 237, 0.15);
+    0 4px 16px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 40px rgba(124, 58, 237, 0.05);
   border: 1px solid rgba(124, 58, 237, 0.2);
   animation: searchBarFloat 6s ease-in-out infinite;
-  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease, background 0.3s ease;
 }
 
 .search-bar-container input {
-  color: #ffffff !important;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5) !important;
-  font-weight: 500 !important;
+  color: #1f2937 !important;
+  text-shadow: none !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.01em !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
 }
 
 .search-bar-container input::placeholder {
-  color: rgba(224, 231, 255, 0.9) !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+  color: rgba(107, 114, 128, 0.7) !important;
+  text-shadow: none !important;
   font-weight: 400 !important;
+  letter-spacing: 0.01em !important;
 }
 
 /* Gradient border effect using pseudo-element */
@@ -225,10 +248,11 @@ body {
 
 .search-bar-container:hover {
   animation: searchBarFloatHover 7s ease-in-out infinite;
+  background: rgba(255, 255, 255, 1) !important;
   box-shadow: 
-    0 6px 16px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    inset 0 0 40px rgba(124, 58, 237, 0.2);
+    0 6px 20px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 0 50px rgba(124, 58, 237, 0.08);
   border-color: rgba(124, 58, 237, 0.3);
 }
 

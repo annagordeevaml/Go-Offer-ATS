@@ -7,140 +7,22 @@ import CandidateCard from './CandidateCard';
 import ConstellationOverlay from './ConstellationOverlay';
 import ChatBot from './ChatBot';
 import AddCandidateModal from './AddCandidateModal';
-import { Candidate } from '../types';
+import AddJobDescriptionModal from './AddJobDescriptionModal';
+import { Candidate, JobDescription } from '../types';
 import galaxyBg from '../../images/logo/galaxy.jpg';
 
 interface SearchResultsPageProps {
-  onNavigate?: (page: 'Search' | 'My Jobs' | 'Analytics') => void;
+  onNavigate?: (page: 'Star Catalogue' | 'My Jobs' | 'Analytics') => void;
 }
 
 const SearchResultsPage: React.FC<SearchResultsPageProps> = ({ onNavigate }) => {
   const [searchQuery, setSearchQuery] = useState<string>('Senior Backend Engineer');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState<Candidate | null>(null);
+  const [jobDescriptions, setJobDescriptions] = useState<JobDescription[]>([]);
   
-  const [candidates, setCandidates] = useState<Candidate[]>([
-    {
-      id: 1,
-      name: 'Alex Kowalski',
-      jobTitle: 'Senior Backend Engineer',
-      location: 'San Francisco, CA',
-      experience: '7 years',
-      availability: '2 weeks',
-      readyToRelocateTo: ['California', 'New York', 'Texas', 'Washington', 'Massachusetts'],
-      lastUpdated: '2 days ago',
-      matchScore: 94,
-      status: 'actively_looking',
-      industries: ['Fintech', 'Payments'],
-      skills: ['Python', 'Django', 'PostgreSQL', 'AWS', 'Docker', 'Kubernetes'],
-      whyGreatFit:
-        'Built payment system at Stripe handling 1M+ transactions/day. Expert in high-load systems, API design, and microservices architecture. Led team of 5 engineers through major infrastructure migration.',
-      socialLinks: {
-        linkedin: '#',
-        portfolio: '#',
-      },
-    },
-    {
-      id: 2,
-      name: 'Maria Rodriguez',
-      jobTitle: 'Backend Engineer',
-      location: 'Remote (US)',
-      experience: '5 years',
-      availability: '1 month',
-      readyToRelocateTo: [],
-      lastUpdated: '1 week ago',
-      matchScore: 89,
-      status: 'actively_looking',
-      industries: ['EdTech', 'E-learning'],
-      skills: ['Python', 'FastAPI', 'MongoDB', 'Redis', 'GraphQL'],
-      whyGreatFit:
-        'Led backend team at Coursera. Strong in microservices architecture and real-time data processing. Scaled platform to 50K concurrent users with 99.9% uptime.',
-      socialLinks: {
-        linkedin: '#',
-        github: '#',
-      },
-    },
-    {
-      id: 3,
-      name: 'Dmitry Sokolov',
-      jobTitle: 'Full Stack Engineer',
-      location: 'Austin, TX',
-      experience: '6 years',
-      availability: 'Immediate',
-      readyToRelocateTo: ['Texas', 'California', 'New York', 'Florida', 'Colorado', 'Washington'],
-      lastUpdated: '3 days ago',
-      matchScore: 78,
-      status: 'actively_looking',
-      industries: ['SaaS'],
-      skills: ['Node.js', 'React', 'PostgreSQL', 'TypeScript', 'AWS'],
-      whyGreatFit:
-        'Full-stack background with strong backend focus. Experience scaling systems to 100K+ users. Quick learner with solid CS fundamentals from top university.',
-      socialLinks: {
-        linkedin: '#',
-      },
-    },
-    {
-      id: 4,
-      name: 'Sarah Chen',
-      jobTitle: 'Senior Backend Engineer',
-      location: 'Seattle, WA',
-      experience: '8 years',
-      availability: '3 weeks',
-      readyToRelocateTo: ['Washington', 'California', 'Oregon', 'New York'],
-      lastUpdated: '5 days ago',
-      matchScore: 92,
-      status: 'open_to_offers',
-      industries: ['Cloud Services', 'Infrastructure'],
-      skills: ['Go', 'Kubernetes', 'gRPC', 'Distributed Systems', 'Terraform'],
-      whyGreatFit:
-        'Architected cloud infrastructure at AWS handling millions of requests. Deep expertise in distributed systems, service mesh, and container orchestration. Published speaker on scalability patterns.',
-      socialLinks: {
-        linkedin: '#',
-        github: '#',
-        portfolio: '#',
-      },
-    },
-    {
-      id: 5,
-      name: 'James Wilson',
-      jobTitle: 'Backend Engineer',
-      location: 'Remote (EU)',
-      experience: '4 years',
-      availability: '1 month',
-      readyToRelocateTo: [],
-      lastUpdated: '1 day ago',
-      matchScore: 85,
-      status: 'actively_looking',
-      industries: ['E-commerce', 'Marketplace'],
-      skills: ['Python', 'Django', 'PostgreSQL', 'Celery', 'Redis', 'Elasticsearch'],
-      whyGreatFit:
-        'Built high-traffic e-commerce platform processing 500K+ orders/month. Strong in payment integrations, inventory management, and search optimization. Experience with international scaling.',
-      socialLinks: {
-        linkedin: '#',
-        github: '#',
-      },
-    },
-    {
-      id: 6,
-      name: 'Elena Petrov',
-      jobTitle: 'Senior Backend Engineer',
-      location: 'Berlin, Germany',
-      experience: '9 years',
-      availability: '2 weeks',
-      readyToRelocateTo: ['New York', 'California', 'Massachusetts', 'Washington', 'Texas'],
-      lastUpdated: '4 days ago',
-      matchScore: 96,
-      status: 'actively_looking',
-      industries: ['Fintech', 'Banking'],
-      skills: ['Java', 'Spring Boot', 'Kafka', 'PostgreSQL', 'Microservices', 'Docker'],
-      whyGreatFit:
-        'Led backend architecture at major European bank. Expert in financial systems, compliance, and security. Built trading platform handling billions in transactions. Strong leadership and mentoring experience.',
-      socialLinks: {
-        linkedin: '#',
-        portfolio: '#',
-      },
-    },
-  ]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
 
   const handleResumeUpload = (candidateId: number, resume: { file: File; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } }) => {
     setCandidates((prev) =>
@@ -201,7 +83,7 @@ const SearchResultsPage: React.FC<SearchResultsPageProps> = ({ onNavigate }) => 
         }}
       >
         <ConstellationOverlay />
-        <Header activePage="Search" />
+        <Header activePage="Star Catalogue" />
         <HeroSection />
       </div>
 
@@ -249,6 +131,13 @@ const SearchResultsPage: React.FC<SearchResultsPageProps> = ({ onNavigate }) => 
                 Add Candidate
               </button>
               <button
+                onClick={() => setIsAddJobModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#06B6D4] to-[#7C3AED] text-white rounded-lg hover:opacity-90 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] font-semibold"
+              >
+                <Plus className="w-4 h-4" />
+                Add Job Description
+              </button>
+              <button
                 onClick={handleFilters}
                 className="flex items-center gap-2 px-4 py-2 bg-white border border-[#7C3AED] text-[#7C3AED] rounded-lg hover:bg-purple-50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
               >
@@ -281,6 +170,15 @@ const SearchResultsPage: React.FC<SearchResultsPageProps> = ({ onNavigate }) => 
         </section>
       </main>
       <ChatBot />
+      <AddJobDescriptionModal
+        open={isAddJobModalOpen}
+        onClose={() => setIsAddJobModalOpen(false)}
+        onSave={(jobDescription) => {
+          setJobDescriptions(prev => [...prev, jobDescription]);
+          setIsAddJobModalOpen(false);
+          console.log('Job description saved:', jobDescription);
+        }}
+      />
       <AddCandidateModal
         open={isAddModalOpen || editingCandidate !== null}
         onClose={() => {
