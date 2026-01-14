@@ -38,6 +38,12 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
   const [validationError, setValidationError] = useState<{ title: string; message: string; missingFields: string[] } | null>(null);
   const [newIndustryInput, setNewIndustryInput] = useState<string>('');
   const [rawJson, setRawJson] = useState<string>('');
+  const [extractedSkills, setExtractedSkills] = useState<string[]>([]);
+  const [originalSkills, setOriginalSkills] = useState<string[]>([]); // Skills explicitly found in text
+  const [analogueSkills, setAnalogueSkills] = useState<string[]>([]); // Analogues/competitors added automatically
+  const [isExtractingSkills, setIsExtractingSkills] = useState(false);
+  const [highlightedText, setHighlightedText] = useState<string>('');
+  const [skillInput, setSkillInput] = useState<string>('');
 
   useEffect(() => {
     if (!open) {
@@ -48,6 +54,8 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
 
     // Only initialize when opening modal
     if (editingJob) {
+      const cleanedDescription = cleanMarkdown(editingJob.description || '');
+      
       setFormData({
         title: editingJob.title || '',
         location: editingJob.location || '',
@@ -57,12 +65,30 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
         companyName: editingJob.companyName || '',
         consideringRelocation: editingJob.consideringRelocation || false,
         acceptsRemoteCandidates: editingJob.acceptsRemoteCandidates || false,
-        description: editingJob.description || '',
+        description: cleanedDescription,
         workplaceType: editingJob.workplaceType || 'Remote',
         employmentType: editingJob.employmentType || 'Full-time',
         seniorityLevel: editingJob.seniorityLevel || 'Not Applicable',
       });
-      setJobDescriptionText(editingJob.description || '');
+      setJobDescriptionText(cleanedDescription);
+      
+      // Use existing hard_skills if available, otherwise extract
+      const existingHardSkills = (editingJob as any)?.hardSkills || editingJob?.skills || [];
+      if (existingHardSkills.length > 0 && cleanedDescription) {
+        setExtractedSkills(existingHardSkills);
+        const { original, analogues } = separateOriginalAndAnalogueSkills(cleanedDescription, existingHardSkills);
+        setOriginalSkills(original);
+        setAnalogueSkills(analogues);
+        setFormData(prev => ({
+          ...prev,
+          skills: existingHardSkills,
+        }));
+        updateHighlightedText(cleanedDescription, existingHardSkills);
+      } else if (cleanedDescription) {
+        // Extract skills if not already in database
+        handleExtractSkillsForExistingJob(cleanedDescription);
+      }
+      
       setStep('editing');
     } else if (!jobDescriptionText && !formData.title) {
       // Only reset when opening fresh modal without any data
@@ -88,11 +114,16 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
     });
     setLocationInput('');
     setJobDescriptionFile(null);
-    setNewIndustryInput('');
-    setIsLoading(false);
-    setValidationError(null);
-    setRawJson('');
-    setStep('upload'); // Reset step when form is reset
+      setNewIndustryInput('');
+      setIsLoading(false);
+      setValidationError(null);
+      setRawJson('');
+      setExtractedSkills([]);
+      setOriginalSkills([]);
+      setAnalogueSkills([]);
+      setHighlightedText('');
+      setSkillInput('');
+      setStep('upload'); // Reset step when form is reset
   };
 
   const convertDocxToText = async (file: File): Promise<string> => {
@@ -128,24 +159,26 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
         return;
       }
 
-      setJobDescriptionText(text);
+      // Clean markdown from text
+      const cleanedText = cleanMarkdown(text);
+      setJobDescriptionText(cleanedText);
       
       // Parse basic info
       try {
-        const { data: parsedBasic } = await parseBasicJobInfo(text);
+        const { data: parsedBasic } = await parseBasicJobInfo(cleanedText);
         
         setFormData(prev => ({
           ...prev,
           title: prev?.title || parsedBasic.job_title || '',
           location: prev?.location || parsedBasic.location || '',
           companyName: prev?.companyName || parsedBasic.company_name || '',
-          description: text,
+          description: cleanedText,
         }));
       } catch (error) {
         console.error('Error parsing basic info:', error);
         setFormData(prev => ({
           ...prev,
-          description: text,
+          description: cleanedText,
         }));
       }
       
@@ -179,11 +212,14 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
         descriptionLength: jobDescriptionText.length,
       });
 
+      // Clean markdown from job description before parsing
+      const cleanedDescription = cleanMarkdown(jobDescriptionText);
+      
       const { data: validated, rawJson: jsonResponse } = await validateAndStandardizeJobData(
         formData.title,
         formData.companyName || '',
         formData.location,
-        jobDescriptionText
+        cleanedDescription
       );
 
       console.log('Parsing completed successfully', validated);
@@ -224,14 +260,47 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
         locations: [normalizedLocationValue], // Use normalized location in array
         industry: industries.join(', '),
         skills: hardSkills,
-        description: validated.job_description,
+        description: cleanedValidatedDescription,
         unifiedTitles: validated.unified_titles || [],
         workplaceType: validated.workplace_type,
         employmentType: validated.employment_type || 'Full-time',
         seniorityLevel: validated.seniority_level || 'Not Applicable',
       };
 
-      setFormData(updatedFormData);
+        // Clean markdown from validated description
+        const cleanedValidatedDescription = cleanMarkdown(validated.job_description);
+        
+        // Extract skills and highlight them
+        // normalizeJobSkills extracts skills from ALL sections: Hard Skills, Software & Tools, Methodologies, Soft Skills
+        let extractedSkillsList: string[] = [];
+        try {
+          const { normalizeJobSkills } = await import('../services/skillsNormalization');
+          extractedSkillsList = await normalizeJobSkills('temp', cleanedValidatedDescription);
+          console.log('Extracted skills from all sections:', {
+            total: extractedSkillsList.length,
+            preview: extractedSkillsList.slice(0, 20)
+          });
+          setExtractedSkills(extractedSkillsList);
+          
+          // Separate original skills from analogues (only for UI visualization)
+          const { original, analogues } = separateOriginalAndAnalogueSkills(cleanedValidatedDescription, extractedSkillsList);
+          setOriginalSkills(original);
+          setAnalogueSkills(analogues);
+          
+          updateHighlightedText(cleanedValidatedDescription, extractedSkillsList);
+        } catch (error) {
+          console.error('Error extracting skills during parse:', error);
+          // Continue without skills extraction
+        }
+      
+      // Merge extracted skills with existing skills
+      // extractedSkillsList contains ALL skills from all sections (Hard Skills, Software & Tools, Methodologies, Soft Skills)
+      const mergedSkills = [...new Set([...updatedFormData.skills, ...extractedSkillsList])];
+      
+      setFormData({
+        ...updatedFormData,
+        skills: mergedSkills,
+      });
       
       // Update step and loading state together
       setIsLoading(false);
@@ -284,6 +353,128 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
     });
   };
 
+  const handleExtractSkills = async () => {
+    if (!jobDescriptionText.trim()) {
+      alert('Please provide a job description first');
+      return;
+    }
+
+    setIsExtractingSkills(true);
+    try {
+      const { normalizeJobSkills } = await import('../services/skillsNormalization');
+      const skills = await normalizeJobSkills('temp', jobDescriptionText);
+      setExtractedSkills(skills);
+      
+      // Separate original skills (found in text) from analogues
+      const { original, analogues } = separateOriginalAndAnalogueSkills(jobDescriptionText, skills);
+      setOriginalSkills(original);
+      setAnalogueSkills(analogues);
+      
+      updateHighlightedText(jobDescriptionText, skills);
+    } catch (error) {
+      console.error('Error extracting skills:', error);
+      alert('Failed to extract skills. Please try again.');
+    } finally {
+      setIsExtractingSkills(false);
+    }
+  };
+
+  const cleanMarkdown = (text: string): string => {
+    if (!text) return '';
+    
+    return text
+      // Remove markdown headers (# ## ###)
+      .replace(/^#{1,6}\s+/gm, '')
+      // Remove bold (**text** or __text__)
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      // Remove italic (*text* or _text_)
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      // Remove links [text](url)
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+      // Remove images ![alt](url)
+      .replace(/!\[([^\]]*)\]\([^\)]+\)/g, '')
+      // Remove code blocks ```
+      .replace(/```[\s\S]*?```/g, '')
+      // Remove inline code `code`
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove strikethrough ~~text~~
+      .replace(/~~([^~]+)~~/g, '$1')
+      // Remove horizontal rules --- or ***
+      .replace(/^[-*]{3,}$/gm, '')
+      // Clean up multiple spaces
+      .replace(/\s+/g, ' ')
+      // Clean up multiple newlines
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
+  const handleExtractSkillsForExistingJob = async (description: string) => {
+    if (!description.trim()) return;
+    
+    try {
+      const { normalizeJobSkills } = await import('../services/skillsNormalization');
+      const skills = await normalizeJobSkills('temp', description);
+      setExtractedSkills(skills);
+      
+      // Separate original skills from analogues
+      const { original, analogues } = separateOriginalAndAnalogueSkills(description, skills);
+      setOriginalSkills(original);
+      setAnalogueSkills(analogues);
+      
+      // Update formData skills with extracted skills
+      setFormData(prev => ({
+        ...prev,
+        skills: [...new Set([...prev.skills, ...skills])]
+      }));
+      
+      updateHighlightedText(description, skills);
+    } catch (error) {
+      console.error('Error extracting skills for existing job:', error);
+      // Continue without skills extraction
+    }
+  };
+
+  const separateOriginalAndAnalogueSkills = (text: string, allSkills: string[]): { original: string[], analogues: string[] } => {
+    const textLower = text.toLowerCase();
+    const original: string[] = [];
+    const analogues: string[] = [];
+    
+    allSkills.forEach(skill => {
+      // Check if skill appears in the original text (case-insensitive)
+      const skillRegex = new RegExp(`\\b${skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (skillRegex.test(textLower)) {
+        original.push(skill);
+      } else {
+        analogues.push(skill);
+      }
+    });
+    
+    return { original, analogues };
+  };
+
+  const updateHighlightedText = (text: string, skills: string[]) => {
+    if (!text || skills.length === 0) {
+      setHighlightedText('');
+      return;
+    }
+
+    let highlighted = text;
+    // Sort skills by length (longest first) to avoid partial matches
+    const sortedSkills = [...skills].sort((a, b) => b.length - a.length);
+    
+    sortedSkills.forEach(skill => {
+      // Create regex to match the skill (case-insensitive, word boundaries)
+      const regex = new RegExp(`\\b${skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+      highlighted = highlighted.replace(regex, (match) => {
+        return `<mark class="bg-yellow-400/30 text-yellow-200 px-1 rounded">${match}</mark>`;
+      });
+    });
+
+    setHighlightedText(highlighted);
+  };
+
   const handleSave = async () => {
     if (!formData.title) {
       alert('Please fill in Job Title');
@@ -316,11 +507,24 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
           : (Array.isArray(formData.industry) ? formData.industry : []))
       : [];
 
+    // Merge all skills: extracted skills (from all sections) + manually added
+    // extractedSkills already contains all skills from Hard Skills, Software & Tools, Methodologies, Soft Skills
+    const allHardSkills = [...new Set([...extractedSkills, ...formData.skills.filter(s => !extractedSkills.includes(s))])];
+    
+    console.log('Saving hard_skills:', {
+      extractedSkillsCount: extractedSkills.length,
+      manuallyAddedCount: formData.skills.filter(s => !extractedSkills.includes(s)).length,
+      totalHardSkills: allHardSkills.length,
+      preview: allHardSkills.slice(0, 10)
+    });
+    
     onSave({
       ...formData,
       locations: normalizedLocations,
       location: normalizedLocations[0] || formData.location, // Update main location field with normalized first location
       industry: industryArray,
+      skills: allHardSkills,
+      hardSkills: allHardSkills, // Save all hard skills (from all sections: Hard Skills, Software & Tools, Methodologies, Soft Skills)
       description: jobDescriptionText,
     });
     resetForm();
@@ -339,29 +543,163 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
           <>
             {/* Textarea for job description */}
             <div>
-              <textarea
-                ref={textareaRef}
-                value={jobDescriptionText}
-                onChange={(e) => {
-                  setJobDescriptionText(e.target.value);
-                  // Try to parse basic info if text is long enough
-                  if (e.target.value.length > 50) {
-                    parseBasicJobInfo(e.target.value).then(({ data }) => {
-                      setFormData(prev => ({
-                        ...prev,
-                        title: prev.title || data.job_title || '',
-                        location: prev.location || data.location || '',
-                        companyName: prev.companyName || data.company_name || '',
-                      }));
-                    }).catch(() => {
-                      // Ignore parsing errors on typing
-                    });
-                  }
-                }}
-                placeholder="Paste your job description here or upload a file..."
-                className="w-full min-h-[300px] bg-white/5 border border-purple-500/30 rounded-xl p-4 text-white placeholder:text-[#e0e7ff]/60 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] resize-none"
-              />
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-sm font-medium text-purple-300">Job Description</label>
+                <div className="flex items-center gap-2">
+                  {highlightedText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHighlightedText('');
+                      }}
+                      className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 rounded-lg transition-colors text-xs"
+                    >
+                      Edit Text
+                    </button>
+                  )}
+                  {jobDescriptionText && (
+                    <button
+                      type="button"
+                      onClick={handleExtractSkills}
+                      disabled={isExtractingSkills}
+                      className="px-4 py-1.5 bg-purple-500/30 hover:bg-purple-500/40 border border-purple-400/30 text-purple-200 rounded-lg transition-colors flex items-center gap-2 text-sm disabled:opacity-50"
+                    >
+                      {isExtractingSkills ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Extracting...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-4 h-4" />
+                          Extract Skills
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              {/* Highlighted text display */}
+              {highlightedText ? (
+                <div 
+                  className="w-full min-h-[300px] bg-white/5 border border-purple-500/30 rounded-xl p-4 text-white overflow-y-auto whitespace-pre-wrap"
+                  dangerouslySetInnerHTML={{ __html: highlightedText }}
+                />
+              ) : (
+                <textarea
+                  ref={textareaRef}
+                  value={jobDescriptionText}
+                  onChange={(e) => {
+                    const cleanedText = cleanMarkdown(e.target.value);
+                    setJobDescriptionText(cleanedText);
+                    setHighlightedText(''); // Clear highlights when text changes
+                    // Try to parse basic info if text is long enough
+                    if (cleanedText.length > 50) {
+                      parseBasicJobInfo(cleanedText).then(({ data }) => {
+                        setFormData(prev => ({
+                          ...prev,
+                          title: prev.title || data.job_title || '',
+                          location: prev.location || data.location || '',
+                          companyName: prev.companyName || data.company_name || '',
+                        }));
+                      }).catch(() => {
+                        // Ignore parsing errors on typing
+                      });
+                    }
+                  }}
+                  placeholder="Paste your job description here or upload a file..."
+                  className="w-full min-h-[300px] bg-white/5 border border-purple-500/30 rounded-xl p-4 text-white placeholder:text-[#e0e7ff]/60 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] resize-none"
+                />
+              )}
             </div>
+
+            {/* Extracted Skills Section */}
+            {extractedSkills.length > 0 && (
+              <div className="bg-white/5 border border-purple-500/30 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-medium text-purple-300">Extracted Skills ({extractedSkills.length})</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setExtractedSkills([]);
+                      setHighlightedText('');
+                    }}
+                    className="text-xs text-purple-400 hover:text-purple-300"
+                  >
+                    Clear All
+                  </button>
+                </div>
+                
+                {/* Skills tags */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {extractedSkills.map((skill, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-500/20 border border-green-400/50 text-green-200 rounded-lg text-sm"
+                    >
+                      {skill}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newSkills = extractedSkills.filter((_, i) => i !== idx);
+                          setExtractedSkills(newSkills);
+                          const { original, analogues } = separateOriginalAndAnalogueSkills(jobDescriptionText, newSkills);
+                          setOriginalSkills(original);
+                          setAnalogueSkills(analogues);
+                          updateHighlightedText(jobDescriptionText, newSkills);
+                        }}
+                        className="hover:text-white transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Add skill input */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={skillInput}
+                    onChange={(e) => setSkillInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && skillInput.trim()) {
+                        e.preventDefault();
+                        const newSkill = skillInput.trim().toLowerCase();
+                        const newSkills = [...extractedSkills, newSkill];
+                        setExtractedSkills(newSkills);
+                        const { original, analogues } = separateOriginalAndAnalogueSkills(jobDescriptionText, newSkills);
+                        setOriginalSkills(original);
+                        setAnalogueSkills(analogues);
+                        setSkillInput('');
+                        updateHighlightedText(jobDescriptionText, newSkills);
+                      }
+                    }}
+                    className="flex-1 bg-white/5 border border-purple-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#7C3AED] text-sm"
+                    placeholder="Add skill manually (press Enter)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (skillInput.trim()) {
+                        const newSkill = skillInput.trim().toLowerCase();
+                        const newSkills = [...extractedSkills, newSkill];
+                        setExtractedSkills(newSkills);
+                        const { original, analogues } = separateOriginalAndAnalogueSkills(jobDescriptionText, newSkills);
+                        setOriginalSkills(original);
+                        setAnalogueSkills(analogues);
+                        setSkillInput('');
+                        updateHighlightedText(jobDescriptionText, newSkills);
+                      }
+                    }}
+                    className="px-4 py-2 bg-purple-500/30 hover:bg-purple-500/40 border border-purple-400/30 text-purple-200 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* OR divider */}
             {!jobDescriptionText && (
@@ -537,6 +875,34 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
           <>
             {/* Editing step - show all fields */}
             <div className="space-y-4">
+              {/* Job Description with highlighted skills */}
+              {jobDescriptionText && (
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="block text-sm font-medium text-purple-300">Job Description</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHighlightedText('');
+                      }}
+                      className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 text-purple-200 rounded-lg transition-colors text-xs"
+                    >
+                      Edit Text
+                    </button>
+                  </div>
+                  {highlightedText ? (
+                    <div 
+                      className="w-full min-h-[200px] max-h-[400px] bg-white/5 border border-purple-500/30 rounded-xl p-4 text-white overflow-y-auto whitespace-pre-wrap"
+                      dangerouslySetInnerHTML={{ __html: highlightedText }}
+                    />
+                  ) : (
+                    <div className="w-full min-h-[200px] max-h-[400px] bg-white/5 border border-purple-500/30 rounded-xl p-4 text-white overflow-y-auto whitespace-pre-wrap">
+                      {jobDescriptionText}
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div>
                 <label className="block text-sm font-medium text-purple-300 mb-2">Job Title</label>
                 <input
@@ -714,23 +1080,124 @@ const AddJobModal: React.FC<AddJobModalProps> = ({ open, onClose, onSave, editin
               {/* Hard Skills */}
               <div>
                 <label className="block text-sm font-medium text-purple-300 mb-2">Hard Skills</label>
-                <div className="flex flex-wrap gap-2">
-                  {formData.skills.map((skill, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/20 border border-purple-500/50 rounded-full text-sm text-purple-200"
-                    >
-                      {skill}
-                      <button
-                        onClick={() => handleRemoveSkill(skill)}
-                        className="hover:text-white transition-colors"
-                        aria-label={`Remove ${skill}`}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={skillInput}
+                    onChange={(e) => setSkillInput(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && skillInput.trim()) {
+                        e.preventDefault();
+                        const newSkill = skillInput.trim().toLowerCase();
+                        const newSkills = [...formData.skills, newSkill];
+                        setFormData({ ...formData, skills: newSkills });
+                        // Add to original skills if not already there
+                        if (!originalSkills.includes(newSkill) && !analogueSkills.includes(newSkill)) {
+                          setOriginalSkills([...originalSkills, newSkill]);
+                        }
+                        setSkillInput('');
+                      }
+                    }}
+                    className="flex-1 bg-white/5 border border-purple-500/30 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                    placeholder="Add skill manually (press Enter)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (skillInput.trim()) {
+                        const newSkill = skillInput.trim().toLowerCase();
+                        const newSkills = [...formData.skills, newSkill];
+                        setFormData({ ...formData, skills: newSkills });
+                        // Add to original skills if not already there
+                        if (!originalSkills.includes(newSkill) && !analogueSkills.includes(newSkill)) {
+                          setOriginalSkills([...originalSkills, newSkill]);
+                        }
+                        setSkillInput('');
+                      }
+                    }}
+                    className="px-4 py-2 bg-purple-500/30 hover:bg-purple-500/40 border border-purple-400/30 text-purple-200 rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
                 </div>
+                
+                {/* Original Skills (found in text) */}
+                {originalSkills.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs text-purple-400 mb-2">Found in description ({originalSkills.length}):</p>
+                    <div className="flex flex-wrap gap-2">
+                      {originalSkills.map((skill, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-2 px-3 py-1 bg-green-500/20 border border-green-500/50 rounded-full text-sm text-green-200"
+                        >
+                          {skill}
+                          <button
+                            onClick={() => {
+                              handleRemoveSkill(skill);
+                              setOriginalSkills(originalSkills.filter((_, i) => i !== idx));
+                            }}
+                            className="hover:text-white transition-colors"
+                            aria-label={`Remove ${skill}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Analogue Skills (competitors/synonyms) */}
+                {analogueSkills.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs text-purple-400 mb-2">Analogues & Competitors ({analogueSkills.length}):</p>
+                    <div className="flex flex-wrap gap-2">
+                      {analogueSkills.map((skill, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-500/50 rounded-full text-sm text-blue-200"
+                        >
+                          {skill}
+                          <button
+                            onClick={() => {
+                              handleRemoveSkill(skill);
+                              setAnalogueSkills(analogueSkills.filter((_, i) => i !== idx));
+                            }}
+                            className="hover:text-white transition-colors"
+                            aria-label={`Remove ${skill}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Manually added skills (not in original or analogues) */}
+                {formData.skills.filter(s => !originalSkills.includes(s) && !analogueSkills.includes(s)).length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-xs text-purple-400 mb-2">Manually Added ({formData.skills.filter(s => !originalSkills.includes(s) && !analogueSkills.includes(s)).length}):</p>
+                    <div className="flex flex-wrap gap-2">
+                      {formData.skills.filter(s => !originalSkills.includes(s) && !analogueSkills.includes(s)).map((skill, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/20 border border-purple-500/50 rounded-full text-sm text-purple-200"
+                        >
+                          {skill}
+                          <button
+                            onClick={() => handleRemoveSkill(skill)}
+                            className="hover:text-white transition-colors"
+                            aria-label={`Remove ${skill}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
             </div>

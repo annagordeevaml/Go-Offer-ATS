@@ -6,6 +6,7 @@ export interface Job {
   postedDate: string;
   matchCount: number;
   skills: string[];
+  hardSkills?: string[]; // Hard skills extracted from job description
   status: 'active' | 'paused' | 'closed';
   companyName?: string;
   industry?: string[]; // Array of industries (as tags)
@@ -39,6 +40,7 @@ export interface JobFormData {
   location: string; // Keep for backward compatibility
   locations?: string[]; // Array of standardized locations
   skills: string[];
+  hardSkills?: string[]; // Hard skills extracted from job description (original + analogues)
   industry?: string | string[]; // Can be string or array of strings
   companyName?: string;
   description?: string;
@@ -68,14 +70,16 @@ export interface Candidate {
   readyToRelocateTo: string[];
   lastUpdated: string;
   matchScore: number;
-  locationScore?: number; // Location matching score (0.0 to 1.0) - old format
-  locationMatchScore?: number; // Location matching score (0.0 to 20.0) - new format
-  titleScore?: number; // Title matching score (0.0 to 20.0)
+  locationScore?: number; // Location matching score (0-100) based on cosine similarity of embeddings
+  industriesScore?: number; // Industries matching score (0-100) based on cosine similarity of embeddings
+  titleScore?: number; // Title matching score (0-100) based on cosine similarity of embeddings
+  skillsScore?: number; // Skills matching score (0-100) - percentage of job skills covered by candidate
   status: 'actively_looking' | 'open_to_offers';
   industries: string[];
   relatedIndustries?: string[];
   companyNames?: string[];
-  skills: string[];
+  skills: string[]; // Legacy field - keep for backward compatibility
+  hardSkills?: string[]; // New field for extracted hard and business skills with analogues
   summary: string;
   socialLinks: SocialLinks;
   calendly?: string;

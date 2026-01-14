@@ -45,80 +45,91 @@ export async function updateAllCandidateSkills(): Promise<void> {
 
     console.log(`Found ${candidatesWithResume.length} candidates with resume content. Starting skills extraction...`);
 
-    // Process candidates in batches of 3 (to avoid rate limits)
-    const batchSize = 3;
+    // Process candidates one by one (sequentially to avoid rate limits)
     let processed = 0;
     let errors = 0;
     let skipped = 0;
 
-    for (let i = 0; i < candidatesWithResume.length; i += batchSize) {
-      const batch = candidatesWithResume.slice(i, i + batchSize);
+    for (let i = 0; i < candidatesWithResume.length; i++) {
+      const candidate = candidatesWithResume[i];
       
-      console.log(`Processing batch ${Math.floor(i / batchSize) + 1} (candidates ${i + 1}-${Math.min(i + batchSize, candidates.length)})...`);
+      console.log(`\n[${i + 1}/${candidatesWithResume.length}] Processing candidate ${candidate.id} (${candidate.name})...`);
 
-      await Promise.all(
-        batch.map(async (candidate) => {
-          try {
-            // Extract resume text from resume_data
-            let resumeText = '';
-            try {
-              const resumeData = typeof candidate.resume_data === 'string' 
-                ? JSON.parse(candidate.resume_data) 
-                : candidate.resume_data;
-              
-              if (resumeData && resumeData.html_content) {
-                // Extract plain text from HTML
-                resumeText = resumeData.html_content
-                  .replace(/<[^>]*>/g, ' ') // Remove HTML tags
-                  .replace(/\s+/g, ' ') // Normalize whitespace
-                  .trim();
-              }
-            } catch (parseError) {
-              console.error(`  ✗ Failed to parse resume_data for candidate ${candidate.id}:`, parseError);
-              skipped++;
-              return;
-            }
-
-            if (!resumeText || resumeText.trim().length === 0) {
-              skipped++;
-              return;
-            }
-
-            // Extract and normalize skills from resume
-            console.log(`  Processing candidate ${candidate.id} (${candidate.name})...`);
-            const normalizedSkills = await normalizeCandidateSkills(candidate.id, resumeText);
+      try {
+        // Extract resume text from resume_data
+        let resumeText = '';
+        try {
+          const resumeData = typeof candidate.resume_data === 'string' 
+            ? JSON.parse(candidate.resume_data) 
+            : candidate.resume_data;
+          
+          console.log(`  → Resume data type: ${typeof resumeData}, has html_content: ${!!resumeData?.html_content}`);
+          
+          if (resumeData && resumeData.html_content) {
+            // Extract plain text from HTML
+            resumeText = resumeData.html_content
+              .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+              .replace(/\s+/g, ' ') // Normalize whitespace
+              .trim();
             
-            if (!normalizedSkills || normalizedSkills.length === 0) {
-              console.warn(`  ⚠ No skills extracted for candidate ${candidate.id}`);
-              skipped++;
-              return;
-            }
-
-            console.log(`  ✓ Extracted ${normalizedSkills.length} skills for candidate ${candidate.id}`);
-
-            // Update candidate in database
-            const { error: updateError } = await supabase
-              .from('candidates')
-              .update({ skills: normalizedSkills })
-              .eq('id', candidate.id);
-
-            if (updateError) {
-              console.error(`  ✗ Failed to update candidate ${candidate.id}:`, updateError);
-              errors++;
-            } else {
-              processed++;
-              console.log(`  ✓ Updated candidate ${candidate.id} (${processed}/${candidates.length})`);
-            }
-          } catch (error) {
-            errors++;
-            console.error(`  ✗ Error processing candidate ${candidate.id}:`, error);
+            console.log(`  → Extracted ${resumeText.length} characters of text from resume`);
+          } else {
+            console.warn(`  ⚠ No html_content found in resume_data for candidate ${candidate.id}`);
+            skipped++;
+            continue;
           }
-        })
-      );
+        } catch (parseError) {
+          console.error(`  ✗ Failed to parse resume_data for candidate ${candidate.id}:`, parseError);
+          skipped++;
+          continue;
+        }
 
-      // Delay between batches to avoid rate limits
-      if (i + batchSize < candidatesWithResume.length) {
-        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay between batches
+        if (!resumeText || resumeText.trim().length === 0) {
+          console.warn(`  ⚠ Empty resume text for candidate ${candidate.id}`);
+          skipped++;
+          continue;
+        }
+
+        // Extract and normalize skills from resume using ChatGPT
+        console.log(`  → Sending resume text to ChatGPT for skills extraction...`);
+        const normalizedSkills = await normalizeCandidateSkills(candidate.id, resumeText);
+        
+        if (!normalizedSkills || normalizedSkills.length === 0) {
+          console.warn(`  ⚠ No skills extracted for candidate ${candidate.id}`);
+          skipped++;
+          continue;
+        }
+
+        console.log(`  ✓ Extracted ${normalizedSkills.length} skills:`, normalizedSkills.slice(0, 10).join(', '), normalizedSkills.length > 10 ? '...' : '');
+
+        // Update candidate in database - save to hard_skills column
+        console.log(`  → Saving to hard_skills column in database...`);
+        const { error: updateError } = await supabase
+          .from('candidates')
+          .update({ hard_skills: normalizedSkills })
+          .eq('id', candidate.id);
+
+        if (updateError) {
+          console.error(`  ✗ Failed to update candidate ${candidate.id}:`, updateError);
+          console.error(`  → Error details:`, updateError.message, updateError.details, updateError.hint);
+          errors++;
+        } else {
+          processed++;
+          console.log(`  ✓ Successfully updated candidate ${candidate.id} with ${normalizedSkills.length} skills`);
+        }
+      } catch (error) {
+        errors++;
+        console.error(`  ✗ Error processing candidate ${candidate.id}:`, error);
+        if (error instanceof Error) {
+          console.error(`  → Error message:`, error.message);
+          console.error(`  → Error stack:`, error.stack);
+        }
+      }
+
+      // Delay between candidates to avoid rate limits (3 second delay)
+      if (i < candidatesWithResume.length - 1) {
+        console.log(`  → Waiting 3 seconds before next candidate...`);
+        await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay between candidates
       }
     }
 

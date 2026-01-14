@@ -191,11 +191,261 @@ No commentary, no explanations, no extra text.
 Use clean spacing and readable formatting.
 
 IMPORTANT: After filling the template, also extract the following information and return it as JSON:
+
+CRITICAL: When extracting industries, you MUST perform a COMPREHENSIVE, HOLISTIC ANALYSIS of the ENTIRE resume:
+
+BEFORE extracting industries, read through the ENTIRE resume from start to finish to understand:
+- All companies the candidate worked for
+- All industries mentioned (explicitly or implicitly)
+- Patterns and themes across all positions
+- Overall career trajectory and industry focus
+- Client industries, partner industries, project industries
+
+Then perform detailed extraction following the process below:
+
+MANDATORY COMPREHENSIVE INDUSTRY EXTRACTION PROCESS:
+
+STEP 1: ANALYZE ALL COMPANIES AND THEIR DESCRIPTIONS
+   * Read through ALL work experience entries from start to finish
+   * For EACH company, identify its industry from:
+     a) Parentheses in company name: "Company (Industry)" → extract Industry immediately
+     b) Company description text: look for industry keywords, sector mentions, business domain
+     c) Products/services mentioned: what does the company produce/sell?
+     d) Client base: who are the company's customers? (B2B, B2C, Education, Healthcare, etc.)
+     e) Market focus: what market/industry does the company operate in?
+
+STEP 2: IDENTIFY DIRECT INDUSTRIES (main_industries)
+   * These are industries where the candidate has DIRECT work experience
+   * For EACH company/role, extract:
+     1. Company's primary industry (from parentheses, description, or context)
+     2. Industry implied by company's business model
+     3. Industry of company's clients (if B2B and client industry is clear)
+     4. Industry context from projects/products mentioned
+   
+   * Examples of direct industry extraction (ALWAYS include synonyms):
+     - "WEAF Kazakhstan (Education)" → DIRECT: "Education", "EdTech", "Education Technology", "Learning"
+     - "Yandex Kazakhstan Advertising" + description mentions "digital advertising" → DIRECT: "Digital Marketing", "AdTech", "Marketing Technology", "Online Marketing", "Advertising"
+     - "Mars, Central Eurasia" + description mentions "e-commerce" → DIRECT: "E-commerce", "Ecommerce", "Retail", "Online Retail", "FMCG", "Consumer Goods"
+     - Company description: "leading healthcare provider" → DIRECT: "Healthcare", "HealthTech", "Healthcare Technology", "Medical"
+     - Company works with "Education clients" → DIRECT: "Education", "EdTech", "Education Technology" (even if company itself is in different industry)
+
+STEP 3: IDENTIFY RELATED INDUSTRIES (other_related_industries)
+   * These are industries that are:
+     - Related to skills/technologies used (e.g., if candidate used healthcare tech → "HealthTech")
+     - Industries of partners/collaborators mentioned
+     - Industries from side projects or freelance work
+     - Industries from education/certifications that are relevant
+     - Industries from volunteer work or pro-bono projects
+     - Industries that are adjacent to direct industries (e.g., EdTech → Education Technology → Technology)
+
+STEP 4: COMPREHENSIVE CONTEXT ANALYSIS - READ ENTIRE RESUME
+   * CRITICAL: Read the ENTIRE resume from beginning to end BEFORE extracting industries
+   * Understand the FULL context:
+     - What is the candidate's overall career focus?
+     - What industries appear consistently across multiple positions?
+     - What industries are mentioned in summary section?
+     - What industries appear in achievements or key projects?
+     - What industries are implied by the candidate's skill set?
+   
+   * Look for patterns across ALL positions:
+     - Does candidate consistently work in certain industries? → include those
+     - Are there recurring industry themes? → include those
+     - What industries connect multiple positions? → include those
+     - What industries are mentioned in summary/achievements? → include those
+   
+   * Analyze company descriptions DEEPLY - read FULL descriptions, not just names:
+     - "B2B educational company with microlearning courses" → Education, EdTech, B2B, Learning Technology
+     - "Digital marketing agency serving healthcare clients" → Digital Marketing, AdTech, Healthcare, HealthTech, B2B
+     - "E-commerce platform for retail brands" → E-commerce, Retail, Technology, B2B
+     - "SaaS company in fintech space" → SaaS, FinTech, Technology, Financial Services
+     - "Leading healthcare provider" → Healthcare, HealthTech, Medical
+   
+   * Cross-reference information:
+     - If company name has "(Education)" AND description mentions "educational" → definitely include Education/EdTech
+     - If multiple positions mention same industry → that's a strong signal
+     - If summary mentions industry focus → include that industry
+
+STEP 5: EXTRACTION RULES (apply to EVERY company/role):
+   1. PARENTHESES ARE MANDATORY:
+      * "Company (Industry)" → MUST extract Industry
+      * "WEAF Kazakhstan (Education)" → MUST include "Education" AND "EdTech" (they are synonyms)
+      * Never skip industries in parentheses
+    
+   2. INCLUDE SYNONYMS AND RELATED TERMS:
+      * When you find an industry, ALSO include its synonyms and related terms:
+        - "Education" → ALSO include: "EdTech", "Education Technology", "Learning"
+        - "Healthcare" → ALSO include: "HealthTech", "Medical", "Healthcare Technology"
+        - "E-commerce" → ALSO include: "Ecommerce", "Retail", "Online Retail"
+        - "Digital Marketing" → ALSO include: "AdTech", "Marketing Technology", "Online Marketing"
+        - "FinTech" → ALSO include: "Financial Services", "Financial Technology", "Banking"
+        - "SaaS" → ALSO include: "Software", "Cloud Software", "Software as a Service"
+        - "Retail" → ALSO include: "E-commerce", "Ecommerce", "Consumer Goods"
+        - "Technology" → ALSO include: "Tech", "IT", "Information Technology"
+        - "Consumer Goods" → ALSO include: "FMCG", "Retail", "CPG"
+        - "B2B" → ALSO include: "Business to Business", "Enterprise"
+        - "B2C" → ALSO include: "Business to Consumer", "Consumer"
+      * If industry has a tech version (e.g., Education → EdTech), include BOTH
+      * If industry has alternative names (e.g., E-commerce → Ecommerce), include BOTH
+    
+   3. COMPANY DESCRIPTION ANALYSIS:
+      * Read the full company description for each role
+      * Extract industry keywords: "education", "healthcare", "fintech", "e-commerce", "retail", "saas", etc.
+      * For EACH keyword found, include it AND its synonyms
+      * If description mentions sector/industry → include it AND synonyms
+      * If description mentions client industries → include those AND their synonyms too
+    
+   4. PRODUCT/SERVICE ANALYSIS:
+      * What products/services does the company offer?
+      * What market does it serve?
+      * Extract industries from product/service context
+      * Include synonyms for each industry found
+    
+   5. JOB TITLE + COMPANY CONTEXT:
+      * Combine job title context with company industry
+      * "Digital Marketing Director at Education company" → include: "Digital Marketing", "AdTech", "Education", "EdTech"
+      * Don't let job title override company industry - include BOTH and their synonyms
+
+STEP 6: BE MAXIMALLY COMPREHENSIVE WITH SYNONYMS
+   * For EVERY industry you find, include its synonyms and related terms
+   * Better to include 5 synonyms than to miss 1
+   * If there's ANY indication of industry involvement → include it AND its synonyms
+   * Look for:
+     - Explicit mentions (parentheses, descriptions) → include + synonyms
+     - Implicit mentions (products, services, clients, markets) → include + synonyms
+     - Related industries (adjacent sectors, partner industries) → include + synonyms
+     - Technology industries (if tech is used in specific sector) → include + synonyms
+   
+   * Return ALL industries found WITH their synonyms, even if:
+     - Candidate worked briefly in that industry
+     - Industry is mentioned only once
+     - Industry is related but not direct
+     - You're not 100% certain (if there's a hint, include it + synonyms)
+
 - full_name
 - main_job_title
 - unified_titles (array) - Extract ALL job titles mentioned in the resume (from Professional Experience section and any other sections). For EACH job title found in the resume, match it to one or more standardized unified categories from this list: CEO, COO, CTO, CPO, CMO, CFO, CHRO, Product Manager, Program Manager, Project Manager, Software Engineer, Backend Engineer, Frontend Engineer, Full-Stack Engineer, DevOps Engineer, Cloud Engineer, Cybersecurity Engineer, Data Engineer, Machine Learning Engineer, Analyst, BI Developer, Data Scientist, QA, UX/UI Designer, Product Designer, Graphic Designer, Motion Designer, Marketing Manager, Content Manager, Social Media Manager, Sales Manager, Business Development Manager, Account Manager, Customer Success Manager, Customer Support Manager, Operations Manager, Supply Chain Manager, Logistics Manager, Strategy Manager, Event Manager, Finance Manager, HR Manager, Mobile Engineer, Recruiter, Legal Counsel, SDET, Others. IMPORTANT: A candidate can have multiple unified titles if they worked in different roles. Return ALL matching unified titles for ALL job titles found in the resume. Also note: CMO automatically includes Marketing Manager, CPO includes Product Manager, CFO includes Finance Manager, CHRO includes HR Manager, COO includes Operations Manager.
-- main_industries (array)
-- other_related_industries (array)
+- main_industries (array) - Extract ALL industries where the candidate has DIRECT work experience. 
+
+COMPREHENSIVE EXTRACTION PROCESS - Analyze the ENTIRE resume context:
+
+1. FOR EACH company/role in Professional Experience, perform DEEP ANALYSIS:
+   
+   a) COMPANY NAME ANALYSIS:
+      * Check for parentheses: "Company (Industry)" → extract Industry immediately
+      * "WEAF Kazakhstan (Education)" → MUST include "Education" AND/OR "EdTech"
+      * "Company (Healthcare)" → MUST include "Healthcare" AND/OR "HealthTech"
+      * "Company (E-Commerce)" → MUST include "E-commerce" AND/OR "Retail"
+      * Parentheses are MANDATORY - never skip them
+   
+   b) COMPANY DESCRIPTION ANALYSIS (read the FULL description):
+      * Look for industry keywords: "education", "healthcare", "fintech", "e-commerce", "retail", "saas", "adtech", etc.
+      * "B2B educational company" → Education, EdTech, B2B
+      * "Digital marketing agency" → Digital Marketing, AdTech
+      * "E-commerce platform" → E-commerce, Retail, Technology
+      * "Healthcare provider" → Healthcare, HealthTech
+      * "SaaS company in fintech" → SaaS, FinTech, Technology
+      * "Serves education clients" → Education, EdTech (even if company is in different industry)
+   
+   c) PRODUCTS/SERVICES ANALYSIS:
+      * What does the company produce/sell?
+      * What market does it serve?
+      * Extract industries from product/service context
+   
+   d) CLIENT BASE ANALYSIS:
+      * Who are the company's customers?
+      * If B2B and client industry is mentioned → include that industry
+      * "Serves healthcare companies" → include Healthcare
+      * "Works with education sector" → include Education
+   
+   e) JOB TITLE + COMPANY CONTEXT COMBINATION:
+      * Combine job title with company industry
+      * "Digital Marketing Director at Education company" → include BOTH "Digital Marketing" AND "Education"
+      * "CMO at Healthcare company" → include BOTH "Marketing" AND "Healthcare"
+      * Don't let job title override company industry - include BOTH if both are relevant
+
+2. EXAMPLES (REAL examples - follow this pattern exactly, ALWAYS include synonyms):
+   * "WEAF Kazakhstan (Education) — Digital Marketing Director"
+     → Company: Education → MUST include "Education", "EdTech", "Education Technology", "Learning"
+     → Role: Digital Marketing → ALSO include "Digital Marketing", "AdTech", "Marketing Technology", "Online Marketing", "Advertising"
+     → Result: ["Education", "EdTech", "Education Technology", "Learning", "Digital Marketing", "AdTech", "Marketing Technology", "Online Marketing", "Advertising"]
+   
+   * "Yandex Kazakhstan Advertising (Digital Marketing)"
+     → Company: Digital Marketing → include "Digital Marketing", "AdTech", "Marketing Technology", "Online Marketing", "Advertising", "Technology", "Tech", "IT"
+     → Result: ["Digital Marketing", "AdTech", "Marketing Technology", "Online Marketing", "Advertising", "Technology", "Tech", "IT"]
+   
+   * "Mars, Central Eurasia (E-Commerce)"
+     → Company: E-Commerce → include "E-commerce", "Ecommerce", "Retail", "Online Retail", "FMCG", "Consumer Goods", "CPG"
+     → Result: ["E-commerce", "Ecommerce", "Retail", "Online Retail", "FMCG", "Consumer Goods", "CPG"]
+   
+   * Company description: "leading healthcare provider serving hospitals"
+     → Include: "Healthcare", "HealthTech", "Healthcare Technology", "Medical", "Health"
+
+3. COMPREHENSIVE CONTEXT READING:
+   * Read the ENTIRE resume, not just individual entries
+   * Look for industry patterns across all positions
+   * Check summary section for industry mentions
+   * Check projects section for industry context
+   * Check achievements for industry indicators
+
+4. BE MAXIMALLY COMPREHENSIVE:
+   * Include industries from ALL positions, even brief ones
+   * If there's ANY hint of industry involvement → include it
+   * Better to include 10 industries than to miss 1
+   * If unsure whether to include → include it
+   * Look everywhere: names, descriptions, products, clients, markets, projects
+
+5. Return as an array of ALL industries found WITH their synonyms (e.g., ["Education", "EdTech", "Education Technology", "Learning", "Digital Marketing", "AdTech", "Marketing Technology", "E-commerce", "Ecommerce", "Retail"])
+- other_related_industries (array) - Extract industries that are RELATED but not direct work experience. 
+
+COMPREHENSIVE RELATED INDUSTRY EXTRACTION:
+
+1. SKILLS/TECHNOLOGY-BASED INDUSTRIES:
+   * If candidate uses healthcare-specific tech → include "HealthTech"
+   * If candidate uses education-specific platforms → include "EdTech"
+   * If candidate uses fintech tools → include "FinTech"
+   * Technology + sector = related industry
+
+2. CLIENT/PARTNER INDUSTRIES:
+   * Industries of companies candidate worked WITH (not FOR)
+   * If candidate's company serves "Healthcare clients" → include "Healthcare" in related
+   * If candidate collaborated with "Education companies" → include "Education" in related
+   * Partner companies' industries
+
+3. PROJECT-BASED INDUSTRIES:
+   * Industries from side projects, freelance work, consulting
+   * Industries from volunteer work or pro-bono projects
+   * Industries from personal projects mentioned in resume
+
+4. EDUCATION/CERTIFICATION INDUSTRIES:
+   * Industries mentioned in education background
+   * Industries from certifications (e.g., "Healthcare Management Certificate" → Healthcare)
+   * Industries from courses or training programs
+
+5. ADJACENT/SEMANTICALLY RELATED INDUSTRIES:
+   * Industries adjacent to direct industries
+   * If direct: "EdTech" → related: "Education", "Technology"
+   * If direct: "AdTech" → related: "Digital Marketing", "Technology", "Media"
+   * If direct: "E-commerce" → related: "Retail", "Technology", "Logistics"
+
+6. CONTEXT-BASED RELATED INDUSTRIES:
+   * Industries implied by candidate's expertise areas
+   * Industries from industry-specific achievements
+   * Industries from industry-specific tools/platforms used
+
+7. INCLUDE SYNONYMS FOR RELATED INDUSTRIES:
+   * For each related industry, also include its synonyms:
+     - "Technology" → "Tech", "IT", "Information Technology"
+     - "Media" → "Media Technology", "Digital Media"
+     - "Consulting" → "Business Consulting", "Management Consulting"
+     - And apply same synonym rules as for main_industries
+
+8. BE COMPREHENSIVE:
+   * Include all related industries, even if connection is indirect
+   * Include synonyms for each related industry
+   * Better to include than to miss
+   * If there's any connection → include it AND its synonyms
+
+Return as an array of related industry names WITH synonyms (e.g., ["Technology", "Tech", "IT", "Media", "Digital Media", "Consulting", "Business Consulting"])
 - location
 - linkedin
 - github
@@ -206,15 +456,48 @@ IMPORTANT: After filling the template, also extract the following information an
 - email
 - other_social_media
 - company_names (array)
-- skills (array) - Extract ALL skills, tools, technologies, and related information from the resume. This includes:
-  * Hard skills (programming languages, frameworks, technologies, methodologies)
-  * Soft skills (communication, leadership, teamwork, etc.)
-  * Tools and software (development tools, design tools, project management tools, etc.)
-  * Products and platforms (specific products worked with, platforms, services)
-  * Teams and methodologies (agile, scrum, team sizes, collaboration tools)
-  * Levels and certifications (seniority levels, certifications, qualifications)
-  * Also include semantically similar skills that are commonly used together with the found skills (e.g., if "React" is found, also include "JavaScript", "TypeScript", "Node.js" if they make sense in context)
-  Return as an array of strings, with each skill as a separate item. Be comprehensive and include everything relevant.
+- skills (array) - Extract ALL hard skills, business skills, tools, platforms, technologies, systems, and related information from the resume. 
+
+CRITICAL EXTRACTION RULES:
+
+1. EXTRACT ALL HARD AND BUSINESS SKILLS:
+   * Hard skills: programming languages, frameworks, technologies, methodologies, systems
+   * Business skills: CRM systems, BI tools, analytical tools, marketing platforms, sales tools
+   * Tools: development tools, design tools, project management tools, collaboration tools
+   * Platforms: SaaS platforms, cloud platforms, e-commerce platforms, marketing platforms
+   * Technologies: specific technologies, libraries, databases, APIs
+   * Systems: CRM systems, ERP systems, analytics systems
+   * Methodologies: agile, scrum, lean, etc.
+
+2. FOR EACH FOUND TOOL/SKILL, ADD RELEVANT ANALOGUES AND INTERCHANGEABLE TOOLS:
+   * Extract ONLY concrete names and tools from the resume text
+   * For EACH tool/skill found, add its RELEVANT ANALOGUES and interchangeable alternatives
+   * Examples:
+     - Klaviyo → also add: Mailchimp, Iterable
+     - HubSpot → also add: Salesforce, Zoho
+     - Figma → also add: Sketch, Adobe XD
+     - SQL → also add: MySQL, PostgreSQL
+     - React → also add: JavaScript, TypeScript, Node.js
+     - Tableau → also add: Power BI, Looker, Qlik
+     - Google Analytics → also add: Adobe Analytics, Mixpanel
+     - Slack → also add: Microsoft Teams, Discord
+     - Jira → also add: Asana, Trello, Monday.com
+   * Only add REAL analogues - don't invent tools that don't exist
+   * Only add tools that are actually interchangeable or commonly used together
+
+3. FILTER DUPLICATES:
+   * Remove duplicate skills/tools
+   * Keep only unique entries
+
+4. OUTPUT FORMAT:
+   * Return as an array of strings
+   * Each item should be ONLY the skill/tool name (no descriptions, no extra words)
+   * Example: ["React", "JavaScript", "TypeScript", "Klaviyo", "Mailchimp", "Iterable", "HubSpot", "Salesforce", "Zoho"]
+
+5. BE COMPREHENSIVE:
+   * Extract from ALL sections: work experience, projects, skills section, summary
+   * Include everything relevant that an employer would care about
+   * Better to include more than to miss something important
 
 Format your response as:
 

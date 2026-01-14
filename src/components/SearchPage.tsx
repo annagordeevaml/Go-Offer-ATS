@@ -19,6 +19,9 @@ import { renormalizeAllJobTitles } from '../utils/renormalizeAllJobTitles';
 import { normalizeAllCandidateLocations } from '../utils/normalizeAllLocations';
 import { normalizeLocation, generateLocationEmbedding } from '../services/locationNormalization';
 import { updateAllCandidateSkills } from '../utils/updateAllCandidateSkills';
+import { normalizeCandidateIndustries, generateIndustriesEmbedding } from '../services/industriesNormalization';
+import { updateAllCandidateIndustries } from '../utils/updateAllCandidateIndustries';
+import { reparseAllCandidateResumes } from '../utils/reparseAllCandidateResumes';
 
 interface ExampleCard {
   id: string;
@@ -39,6 +42,8 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
   const [isNormalizingJobTitles, setIsNormalizingJobTitles] = useState(false);
   const [isNormalizingLocations, setIsNormalizingLocations] = useState(false);
   const [isUpdatingSkills, setIsUpdatingSkills] = useState(false);
+  const [isUpdatingIndustries, setIsUpdatingIndustries] = useState(false);
+  const [isReparsingResumes, setIsReparsingResumes] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<{
     show: boolean;
     email: string;
@@ -81,6 +86,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
             relatedIndustries: item.related_industries || [],
             companyNames: item.company_names || [],
             skills: item.skills || [],
+            hardSkills: item.hard_skills || [],
             summary: item.summary || '',
             socialLinks: item.social_links || {},
             calendly: item.calendly,
@@ -309,6 +315,44 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
     }
   };
 
+  const handleUpdateAllIndustries = async () => {
+    if (!confirm('This will normalize industries and generate embeddings for ALL candidates in the database. This may take a while and use OpenAI API credits. Continue?')) {
+      return;
+    }
+    
+    setIsUpdatingIndustries(true);
+    try {
+      await updateAllCandidateIndustries();
+      alert('Industries update complete! Check console for details.');
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating industries:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Error updating industries:\n\n${errorMessage}\n\nCheck console for more details.`);
+    } finally {
+      setIsUpdatingIndustries(false);
+    }
+  };
+
+  const handleReparseAllResumes = async () => {
+    if (!confirm('This will re-parse ALL candidate resumes with improved industry extraction. This will update industries for all candidates. This may take a while and use OpenAI API credits. Continue?')) {
+      return;
+    }
+    
+    setIsReparsingResumes(true);
+    try {
+      await reparseAllCandidateResumes();
+      alert('Resume re-parsing complete! Check console for details. The page will reload to show updated data.');
+      window.location.reload();
+    } catch (error) {
+      console.error('Error re-parsing resumes:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Error re-parsing resumes:\n\n${errorMessage}\n\nCheck console for more details.`);
+    } finally {
+      setIsReparsingResumes(false);
+    }
+  };
+
   // Filter candidates based on search query
   const filteredCandidates = searchQuery
     ? candidates.filter(
@@ -500,6 +544,34 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
                     )}
                   </button>
                   <button
+                    onClick={handleUpdateAllIndustries}
+                    disabled={isUpdatingIndustries}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isUpdatingIndustries ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Update All Industries'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleReparseAllResumes}
+                    disabled={isReparsingResumes}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isReparsingResumes ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Re-parsing...
+                      </>
+                    ) : (
+                      'Re-parse All Resumes'
+                    )}
+                  </button>
+                  <button
                     onClick={handleNormalizeAllJobTitles}
                     disabled={isNormalizingJobTitles}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -661,6 +733,32 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
               }
             }
             
+            // Normalize industries if they exist
+            let normalizedIndustries: string[] = [];
+            let industriesEmbedding: number[] | null = null;
+            const industries = candidate.industries || [];
+            const relatedIndustries = candidate.relatedIndustries || [];
+            
+            if (industries.length > 0 || relatedIndustries.length > 0) {
+              try {
+                console.log('Normalizing industries for new candidate:', { industries, relatedIndustries });
+                normalizedIndustries = await normalizeCandidateIndustries(industries, relatedIndustries);
+                console.log('Normalized industries:', normalizedIndustries);
+                
+                if (normalizedIndustries.length > 0) {
+                  industriesEmbedding = await generateIndustriesEmbedding(normalizedIndustries);
+                  console.log('Industries embedding generated:', industriesEmbedding ? 'Success' : 'Failed');
+                }
+              } catch (normalizationError) {
+                console.error('Error normalizing industries:', normalizationError);
+                // Fallback: basic normalization
+                normalizedIndustries = [...industries, ...relatedIndustries]
+                  .map(i => i.trim().toLowerCase())
+                  .filter(i => i.length > 0)
+                  .filter((i, idx, self) => self.indexOf(i) === idx);
+              }
+            }
+            
             // Prepare data for Supabase (convert to snake_case)
             const candidateData: any = {
               name: candidate.name,
@@ -675,8 +773,10 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
               status: candidate.status || 'actively_looking',
               industries: candidate.industries || [],
               related_industries: candidate.relatedIndustries || [],
+              normalized_industries: normalizedIndustries.length > 0 ? normalizedIndustries : null,
               company_names: candidate.companyNames || [],
-              skills: normalizedSkills, // Use normalized skills
+              skills: normalizedSkills, // Use normalized skills (legacy)
+              hard_skills: normalizedSkills, // Save to new hard_skills column
               summary: candidate.summary || null,
               social_links: candidate.socialLinks || {},
               calendly: candidate.calendly || null,
@@ -694,6 +794,11 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
               } : null,
               created_by_user_id: user?.id || null,
             };
+
+            // Add industries embedding if available
+            if (industriesEmbedding && industriesEmbedding.length > 0) {
+              candidateData.industries_embedding = industriesEmbedding;
+            }
 
             if (editingCandidate) {
               // Normalize job title and generate embedding for update
@@ -764,36 +869,116 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
                 }
               }
               
-              // Update candidateData with normalized fields
-              candidateData.normalized_job_title = normalizedJobTitle || null;
-              candidateData.normalized_location = normalizedLocation || null;
-              candidateData.skills = normalizedSkillsForUpdate; // Use normalized skills
-              candidateData.skills = normalizedSkills; // Use normalized skills
+              // Normalize industries for update
+              let normalizedIndustriesForUpdate: string[] = [];
+              let industriesEmbeddingForUpdate: number[] | null = null;
+              const industriesForUpdate = candidate.industries || [];
+              const relatedIndustriesForUpdate = candidate.relatedIndustries || [];
+              
+              if (industriesForUpdate.length > 0 || relatedIndustriesForUpdate.length > 0) {
+                try {
+                  console.log('Normalizing industries for update:', { industries: industriesForUpdate, relatedIndustries: relatedIndustriesForUpdate });
+                  normalizedIndustriesForUpdate = await normalizeCandidateIndustries(industriesForUpdate, relatedIndustriesForUpdate);
+                  console.log('Normalized industries for update:', normalizedIndustriesForUpdate);
+                  
+                  if (normalizedIndustriesForUpdate.length > 0) {
+                    industriesEmbeddingForUpdate = await generateIndustriesEmbedding(normalizedIndustriesForUpdate);
+                    console.log('Industries embedding generated for update:', industriesEmbeddingForUpdate ? 'Success' : 'Failed');
+                  }
+                } catch (normalizationError) {
+                  console.error('Error normalizing industries:', normalizationError);
+                  // Fallback: basic normalization
+                  normalizedIndustriesForUpdate = [...industriesForUpdate, ...relatedIndustriesForUpdate]
+                    .map(i => i.trim().toLowerCase())
+                    .filter(i => i.length > 0)
+                    .filter((i, idx, self) => self.indexOf(i) === idx);
+                }
+              }
+              
+              // Create update data object (don't include resume_text as it doesn't exist in DB)
+              const updateData: any = {
+                name: candidate.name,
+                job_title: candidate.jobTitle,
+                normalized_job_title: normalizedJobTitle || null,
+                location: candidate.location,
+                normalized_location: normalizedLocation || null,
+                experience: candidate.experience || null,
+                availability: candidate.availability || null,
+                ready_to_relocate_to: candidate.readyToRelocateTo || [],
+                last_updated: candidate.lastUpdated || new Date().toISOString().split('T')[0],
+                match_score: candidate.matchScore || 0,
+                status: candidate.status || 'actively_looking',
+                industries: candidate.industries || [],
+                related_industries: candidate.relatedIndustries || [],
+                company_names: candidate.companyNames || [],
+                skills: normalizedSkillsForUpdate, // Legacy field
+                hard_skills: normalizedSkillsForUpdate, // Save to new hard_skills column
+                summary: candidate.summary || null,
+                social_links: candidate.socialLinks || {},
+                calendly: candidate.calendly || null,
+                salary_min: candidate.salaryMin || null,
+                salary_max: candidate.salaryMax || null,
+                salary_unit: candidate.salaryUnit || 'year',
+                unified_titles: candidate.unifiedTitles || [],
+                resume_data: candidate.resume ? {
+                  html_content: candidate.resume.htmlContent || '',
+                  contacts: candidate.resume.contacts || {},
+                } : null,
+              };
+              
+              // Only update normalized_industries if we have normalized industries
+              if (normalizedIndustriesForUpdate.length > 0) {
+                updateData.normalized_industries = normalizedIndustriesForUpdate;
+              } else {
+                // If no normalized industries, set to null (but only if industries were actually changed)
+                if (candidate.industries && candidate.industries.length === 0) {
+                  updateData.normalized_industries = null;
+                }
+              }
               
               // Add embeddings if available (as array for pgvector)
               if (jobTitleEmbedding && jobTitleEmbedding.length > 0) {
-                candidateData.job_title_embedding = jobTitleEmbedding;
+                updateData.job_title_embedding = jobTitleEmbedding;
               }
               if (locationEmbedding && locationEmbedding.length > 0) {
-                candidateData.location_embedding = locationEmbedding;
+                updateData.location_embedding = locationEmbedding;
+              }
+              if (industriesEmbeddingForUpdate && industriesEmbeddingForUpdate.length > 0) {
+                updateData.industries_embedding = industriesEmbeddingForUpdate;
+              } else if (normalizedIndustriesForUpdate.length === 0 && candidate.industries && candidate.industries.length === 0) {
+                // If industries were cleared, also clear the embedding
+                updateData.industries_embedding = null;
               }
               
               // Update existing candidate in Supabase
               const { data, error } = await supabase
                 .from('candidates')
-                .update(candidateData)
+                .update(updateData)
                 .eq('id', editingCandidate.id)
                 .select();
 
               if (error) {
                 console.error('Error updating candidate:', error);
+                console.error('Error details:', {
+                  message: error.message,
+                  details: error.details,
+                  hint: error.hint,
+                  code: error.code,
+                });
+                
                 // Check if error is about missing columns
                 if (error.message && error.message.includes('salary_unit')) {
                   alert('Database schema needs to be updated. Please run the SQL script from add_salary_unit.sql in Supabase Dashboard to add the salary_unit column.');
                 } else if (error.message && error.message.includes('unified_titles')) {
                   alert('Database schema needs to be updated. Please run the SQL script from add_unified_titles_column.sql in Supabase Dashboard to add the unified_titles column.');
+                } else if (error.message && (error.message.includes('normalized_industries') || error.message.includes('industries_embedding'))) {
+                  alert('Database schema needs to be updated. Please run the SQL script from add_normalized_industries_fields.sql in Supabase Dashboard to add the industries columns.');
                 } else {
-                  alert('Failed to update candidate. Please try again.');
+                  // More detailed error message
+                  const errorMsg = error.message || 'Unknown error';
+                  const errorDetails = error.details ? `\n\nDetails: ${error.details}` : '';
+                  const errorHint = error.hint ? `\n\nHint: ${error.hint}` : '';
+                  alert(`Failed to update candidate.\n\nError: ${errorMsg}${errorDetails}${errorHint}\n\nPlease check the console for more details.`);
                 }
                 return;
               }

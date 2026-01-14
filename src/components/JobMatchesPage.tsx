@@ -4,25 +4,27 @@ import { Candidate, Job } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import CandidateCard from './CandidateCard';
 import Header from './Header';
-import { calculateLocationScore } from '../utils/locationMatching';
-import { calculateTitleScore } from '../utils/vectorSimilarity';
-import { calculateLocationMatchingScore } from '../utils/locationMatchingScore';
+import { calculateEmbeddingScore } from '../utils/vectorSimilarity';
+import { calculateIndustriesMatchScoreByExperience } from '../utils/industriesMatching';
+import { calculateSkillsMatchScore } from '../utils/skillsMatching';
 
 interface JobMatchesPageProps {
   job: Job;
   onBack: () => void;
 }
 
-interface CandidateWithLocationScore extends Candidate {
-  locationScore?: number; // Old location score (0-1)
-  titleScore?: number; // Title matching score (0-20)
-  locationMatchScore?: number; // New location matching score (0-20)
+interface CandidateWithScores extends Candidate {
+  locationScore?: number; // Location matching score (0-100) based on cosine similarity
+  industriesScore?: number; // Industries matching score (0-100) based on cosine similarity
+  titleScore?: number; // Title matching score (0-100) based on cosine similarity
+  skillsScore?: number; // Skills matching score (0-100) - percentage of job skills covered by candidate
 }
 
 const JobMatchesPage: React.FC<JobMatchesPageProps> = ({ job, onBack }) => {
-  const [candidates, setCandidates] = useState<CandidateWithLocationScore[]>([]);
-  const [filteredCandidates, setFilteredCandidates] = useState<CandidateWithLocationScore[]>([]);
+  const [candidates, setCandidates] = useState<CandidateWithScores[]>([]);
+  const [filteredCandidates, setFilteredCandidates] = useState<CandidateWithScores[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [jobHardSkills, setJobHardSkills] = useState<string[]>([]);
   
   // Filter states
   const [selectedLocations, setSelectedLocations] = useState<Set<string>>(new Set());
@@ -39,36 +41,50 @@ const JobMatchesPage: React.FC<JobMatchesPageProps> = ({ job, onBack }) => {
   const loadMatchingCandidates = async () => {
     setIsLoading(true);
     try {
-      // Get job data from database (including title_embedding, considering_relocation, and accepts_remote_candidates)
+      // Get job data from database (including all embeddings and hard_skills)
       let jobData: any = null;
       try {
         const { data, error } = await supabase
           .from('jobs')
-          .select('title_embedding, considering_relocation, accepts_remote_candidates, workplace_type')
+          .select('title_embedding, location_embedding, industries_embedding, normalized_industries, industry, considering_relocation, accepts_remote_candidates, workplace_type, hard_skills')
           .eq('id', job.id)
           .single();
         if (!error) {
           jobData = data;
+          // Store job hard skills for passing to CandidateCard
+          setJobHardSkills(data.hard_skills || []);
         }
       } catch (e) {
         console.warn('Could not fetch job data:', e);
       }
 
-      // Supabase returns vector as array, but we need to ensure it's a number array
-      let jobTitleEmbedding: number[] | null = null;
-      if (jobData?.title_embedding) {
-        if (Array.isArray(jobData.title_embedding)) {
-          jobTitleEmbedding = jobData.title_embedding;
-        } else if (typeof jobData.title_embedding === 'string') {
-          // If it's a string, try to parse it
+      // Helper function to parse embedding from Supabase response
+      const parseEmbedding = (embedding: any): number[] | null => {
+        if (!embedding) return null;
+        if (Array.isArray(embedding)) {
+          return embedding;
+        }
+        if (typeof embedding === 'string') {
           try {
-            jobTitleEmbedding = JSON.parse(jobData.title_embedding);
+            return JSON.parse(embedding);
           } catch (e) {
-            console.warn('Failed to parse job title embedding:', e);
+            console.warn('Failed to parse embedding:', e);
+            return null;
           }
         }
-      }
-      console.log('Job title embedding loaded:', jobTitleEmbedding ? `Vector of length ${jobTitleEmbedding.length}` : 'Not found');
+        return null;
+      };
+
+      // Parse job embeddings
+      const jobTitleEmbedding = parseEmbedding(jobData?.title_embedding);
+      const jobLocationEmbedding = parseEmbedding(jobData?.location_embedding);
+      const jobIndustriesEmbedding = parseEmbedding(jobData?.industries_embedding);
+
+      console.log('Job embeddings loaded:', {
+        title: jobTitleEmbedding ? `Vector of length ${jobTitleEmbedding.length}` : 'Not found',
+        location: jobLocationEmbedding ? `Vector of length ${jobLocationEmbedding.length}` : 'Not found',
+        industries: jobIndustriesEmbedding ? `Vector of length ${jobIndustriesEmbedding.length}` : 'Not found',
+      });
 
       // Load all candidates from Supabase (including job_title_embedding)
       const { data: candidatesData, error } = await supabase
@@ -86,8 +102,8 @@ const JobMatchesPage: React.FC<JobMatchesPageProps> = ({ job, onBack }) => {
         return;
       }
 
-      // Map Supabase data to Candidate format and calculate location scores
-      const mappedCandidates: CandidateWithLocationScore[] = await Promise.all(
+      // Map Supabase data to Candidate format and calculate scores based on cosine similarity
+      const mappedCandidates: CandidateWithScores[] = await Promise.all(
         candidatesData.map(async (item: any) => {
           // Load unified titles from relationship table if not in main table
           let unifiedTitles: string[] = item.unified_titles || [];
@@ -99,102 +115,84 @@ const JobMatchesPage: React.FC<JobMatchesPageProps> = ({ job, onBack }) => {
             unifiedTitles = titlesData?.map(t => t.unified_title) || [];
           }
 
-          // Calculate new location matching score (0-20)
-          const isJobRemote = job.workplaceType === 'Remote' || 
-                             job.location?.toLowerCase().includes('remote') ||
-                             job.locations?.some(loc => loc.toLowerCase().includes('remote'));
-          
-          const jobLocation = job.location || job.locations?.[0] || '';
-          const candidateLocation = item.location || '';
-          const candidateWillingToRelocate = (item.ready_to_relocate_to && item.ready_to_relocate_to.length > 0) || false;
-          const candidateRelocationLocations = item.ready_to_relocate_to || [];
-          
-          // Get job's considering_relocation and accepts_remote_candidates from database if available
-          const jobAcceptsRelocation = jobData?.considering_relocation !== undefined 
-            ? jobData.considering_relocation 
-            : (job.consideringRelocation !== undefined ? job.consideringRelocation : true); // Default to true
-          
-          const jobAcceptsRemote = jobData?.accepts_remote_candidates !== undefined
-            ? jobData.accepts_remote_candidates
-            : (job.acceptsRemoteCandidates !== undefined ? job.acceptsRemoteCandidates : isJobRemote); // Default based on workplace type
-          
-          const locationMatchResult = calculateLocationMatchingScore(
-            candidateLocation,
-            candidateWillingToRelocate,
-            candidateRelocationLocations,
-            jobLocation,
-            jobAcceptsRemote,
-            jobAcceptsRelocation
-          );
-          
-          const locationMatchScore = locationMatchResult.score;
-          
-          // Always log for debugging
-          console.log(`[Location Match] Candidate ${item.id || item.name}:`, {
-            locationMatchScore,
-            candidateLocation: candidateLocation || '(empty)',
-            jobLocation: jobLocation || '(empty)',
-            isJobRemote,
-            candidateWillingToRelocate,
-            jobAcceptsRelocation,
-            factors: locationMatchResult.factors
-          });
-          
-          // Keep old location score for backward compatibility
-          const locationScore = calculateLocationScore(
-            isJobRemote ? 'Remote' : jobLocation,
-            candidateLocation,
-            candidateWillingToRelocate
-          );
+        // Parse candidate embeddings
+        const candidateTitleEmbedding = parseEmbedding(item.job_title_embedding);
+        const candidateLocationEmbedding = parseEmbedding(item.location_embedding);
+        const candidateIndustriesEmbedding = parseEmbedding(item.industries_embedding);
 
-          // Calculate title score
-          // Supabase returns vector as array, but we need to ensure it's a number array
-          let candidateTitleEmbedding: number[] | null = null;
-          if (item.job_title_embedding) {
-            if (Array.isArray(item.job_title_embedding)) {
-              candidateTitleEmbedding = item.job_title_embedding;
-            } else if (typeof item.job_title_embedding === 'string') {
-              // If it's a string, try to parse it
-              try {
-                candidateTitleEmbedding = JSON.parse(item.job_title_embedding);
-              } catch (e) {
-                console.warn(`Failed to parse candidate ${item.id} title embedding:`, e);
-              }
-            }
-          }
-          const titleScore = calculateTitleScore(candidateTitleEmbedding, jobTitleEmbedding);
+        // Get candidate industries (normalized)
+        const candidateIndustries = [
+          ...(item.industries || []),
+          ...(item.related_industries || [])
+        ];
+        const candidateNormalizedIndustries = item.normalized_industries || candidateIndustries;
 
-          return {
-            id: item.id,
-            name: item.full_name || item.name || 'Unknown',
-            jobTitle: item.general_title || item.job_title || '',
-            location: item.location || '',
-            experience: item.experience || '',
-            availability: item.availability || '',
-            readyToRelocateTo: item.ready_to_relocate_to || [],
-            lastUpdated: item.last_updated || '',
-            matchScore: titleScore, // Use title score as match score
-            status: item.status as 'actively_looking' | 'open_to_offers',
-            industries: item.industries || [],
-            relatedIndustries: item.related_industries || [],
-            companyNames: item.company_names || [],
-            skills: item.skills || [],
-            summary: item.summary || '',
-            socialLinks: item.social_links || {},
-            calendly: item.calendly,
-            salaryMin: item.salary_min,
-            salaryMax: item.salary_max,
-            salaryUnit: item.salary_unit || 'year',
-            unifiedTitles: unifiedTitles,
-            locationScore: locationScore, // Old location score (0-1) for backward compatibility
-            locationMatchScore: locationMatchScore, // New location matching score (0-20)
-            titleScore: titleScore, // Title matching score (0-20)
-            resume: item.resume_data ? {
-              file: null,
-              htmlContent: item.resume_data.html_content || '',
-              contacts: item.resume_data.contacts || {},
-            } : undefined,
-          };
+        // Get job industries (normalized)
+        const jobIndustries = job.industry || [];
+        // Use normalized_industries from database if available, otherwise use original industries
+        const jobNormalizedIndustries = jobData?.normalized_industries || jobIndustries;
+
+        // Extract resume text for industry experience analysis
+        const resumeText = item.resume_data?.html_content 
+          ? item.resume_data.html_content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+          : null;
+
+        // Calculate four scores (0-100)
+        const titleScore = calculateEmbeddingScore(candidateTitleEmbedding, jobTitleEmbedding);
+        const locationScore = calculateEmbeddingScore(candidateLocationEmbedding, jobLocationEmbedding);
+        
+        // Use experience-based approach for industries matching
+        const industriesScore = await calculateIndustriesMatchScoreByExperience(
+          candidateNormalizedIndustries,
+          resumeText,
+          jobNormalizedIndustries
+        );
+
+        // Calculate skills match score (percentage of job skills covered by candidate)
+        const jobHardSkills = jobData?.hard_skills || [];
+        const candidateHardSkills = item.hard_skills || [];
+        const skillsScore = calculateSkillsMatchScore(jobHardSkills, candidateHardSkills);
+
+        console.log(`[Match Scores] Candidate ${item.id || item.name}:`, {
+          titleScore: titleScore.toFixed(2),
+          locationScore: locationScore.toFixed(2),
+          industriesScore: industriesScore.toFixed(2),
+          skillsScore: skillsScore.toFixed(2),
+        });
+
+        return {
+          id: item.id,
+          name: item.full_name || item.name || 'Unknown',
+          jobTitle: item.general_title || item.job_title || '',
+          location: item.location || '',
+          experience: item.experience || '',
+          availability: item.availability || '',
+          readyToRelocateTo: item.ready_to_relocate_to || [],
+          lastUpdated: item.last_updated || '',
+          matchScore: titleScore, // Use title score as match score
+          status: item.status as 'actively_looking' | 'open_to_offers',
+          industries: item.industries || [],
+          relatedIndustries: item.related_industries || [],
+          companyNames: item.company_names || [],
+          skills: item.skills || [],
+          hardSkills: item.hard_skills || [],
+          summary: item.summary || '',
+          socialLinks: item.social_links || {},
+          calendly: item.calendly,
+          salaryMin: item.salary_min,
+          salaryMax: item.salary_max,
+          salaryUnit: item.salary_unit || 'year',
+          unifiedTitles: unifiedTitles,
+          titleScore: titleScore, // Title matching score (0-100) based on cosine similarity
+          locationScore: locationScore, // Location matching score (0-100) based on cosine similarity
+          industriesScore: industriesScore, // Industries matching score (0-100) based on cosine similarity
+          skillsScore: skillsScore, // Skills matching score (0-100) - percentage of job skills covered
+          resume: item.resume_data ? {
+            file: null,
+            htmlContent: item.resume_data.html_content || '',
+            contacts: item.resume_data.contacts || {},
+          } : undefined,
+        };
         })
       );
 
@@ -208,17 +206,29 @@ const JobMatchesPage: React.FC<JobMatchesPageProps> = ({ job, onBack }) => {
         return candidate.unifiedTitles.some(title => jobUnifiedTitles.includes(title));
       });
 
-      // Sort candidates by title score (descending), then by location match score
+      // Sort candidates by title score (descending), then by industries score, then by skills score, then by location score
       const sortedCandidates = matchingCandidates.sort((a, b) => {
         const titleScoreA = a.titleScore ?? 0;
         const titleScoreB = b.titleScore ?? 0;
         if (titleScoreB !== titleScoreA) {
           return titleScoreB - titleScoreA;
         }
-        // If title scores are equal, sort by location match score
-        const locationMatchScoreA = a.locationMatchScore ?? 0;
-        const locationMatchScoreB = b.locationMatchScore ?? 0;
-        return locationMatchScoreB - locationMatchScoreA;
+        // If title scores are equal, sort by industries score
+        const industriesScoreA = a.industriesScore ?? 0;
+        const industriesScoreB = b.industriesScore ?? 0;
+        if (industriesScoreB !== industriesScoreA) {
+          return industriesScoreB - industriesScoreA;
+        }
+        // If industries scores are equal, sort by skills score
+        const skillsScoreA = a.skillsScore ?? 0;
+        const skillsScoreB = b.skillsScore ?? 0;
+        if (skillsScoreB !== skillsScoreA) {
+          return skillsScoreB - skillsScoreA;
+        }
+        // If skills scores are equal, sort by location score
+        const locationScoreA = a.locationScore ?? 0;
+        const locationScoreB = b.locationScore ?? 0;
+        return locationScoreB - locationScoreA;
       });
 
       setCandidates(sortedCandidates);
@@ -454,6 +464,7 @@ const JobMatchesPage: React.FC<JobMatchesPageProps> = ({ job, onBack }) => {
                   <CandidateCard
                     key={candidate.id}
                     candidate={candidate}
+                    jobHardSkills={jobHardSkills}
                   />
                 ))}
               </div>

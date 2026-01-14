@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Loader2, Save, AlertCircle } from 'lucide-react';
+import { X, Upload, Loader2, Save, AlertCircle, Plus, Tag, RefreshCw, Briefcase } from 'lucide-react';
 import { Candidate } from '../types';
 import { UNIFIED_TITLES_SORTED, addRelatedTitles } from '../utils/unifiedTitlesMapping';
 import { parseResumeWithAI, convertDocxToText, convertPdfToText, generateSummariesWithAllModels, reformatResumeWithTemplate } from '../services/resumeParserService';
@@ -382,6 +382,54 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
     }));
   };
 
+  const handleReparseResume = async () => {
+    if (!candidateData?.resume?.htmlContent) {
+      alert('No resume content found. Please upload a resume first.');
+      return;
+    }
+
+    if (!confirm('This will re-parse the resume with improved industry extraction. This may take a moment and use API credits. Continue?')) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Extract plain text from HTML
+      const resumeText = candidateData.resume.htmlContent
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!resumeText || resumeText.length === 0) {
+        alert('Could not extract text from resume. Please try uploading the resume again.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Parse resume with improved prompt
+      const { data: parsedData } = await parseResumeWithAI(resumeText);
+
+      // Update industries from parsed data
+      const mainIndustries = Array.isArray(parsedData.main_industries) 
+        ? parsedData.main_industries.filter(i => i && i.trim() !== '') 
+        : [];
+      const relatedIndustries = Array.isArray(parsedData.other_related_industries)
+        ? parsedData.other_related_industries.filter(i => i && i.trim() !== '')
+        : [];
+
+      // Update candidate data with new industries
+      updateCandidateField('industries', mainIndustries);
+      updateCandidateField('relatedIndustries', relatedIndustries);
+
+      alert(`Resume re-parsed successfully!\n\nFound ${mainIndustries.length} main industries and ${relatedIndustries.length} related industries.`);
+    } catch (error) {
+      console.error('Error re-parsing resume:', error);
+      alert(`Failed to re-parse resume: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -573,19 +621,103 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
 
                 {/* Main Industries */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Main Industries
-                    {candidateData?.industries && candidateData.industries.length > 0 && (
-                      <span className="text-xs text-gray-500 ml-2">({candidateData.industries.length} found)</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Main Industries
+                      {candidateData?.industries && candidateData.industries.length > 0 && (
+                        <span className="text-xs text-gray-500 ml-2">({candidateData.industries.length})</span>
+                      )}
+                    </label>
+                    {editingCandidate && candidateData?.resume?.htmlContent && (
+                      <button
+                        type="button"
+                        onClick={handleReparseResume}
+                        disabled={isLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        title="Re-parse resume to extract industries with improved logic"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                        Re-parse Resume
+                      </button>
                     )}
-                  </label>
-                  <textarea
-                    value={Array.isArray(candidateData?.industries) ? candidateData.industries.join(', ') : ''}
-                    onChange={(e) => updateCandidateField('industries', e.target.value.split(',').map(i => i.trim()).filter(Boolean))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                    rows={2}
-                    placeholder="Enter main industries separated by commas"
-                  />
+                  </div>
+                  
+                  {/* Industry Tags */}
+                  <div className="flex flex-wrap gap-2 mb-2 min-h-[60px] p-2 border border-gray-300 rounded-lg bg-gray-50">
+                    {Array.isArray(candidateData?.industries) && candidateData.industries.length > 0 ? (
+                      candidateData.industries.map((industry, idx) => (
+                        <div
+                          key={idx}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white rounded-full text-sm font-medium shadow-sm hover:shadow-md transition-shadow"
+                        >
+                          <Tag className="w-3 h-3" />
+                          <span>{industry}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = candidateData.industries?.filter((_, i) => i !== idx) || [];
+                              updateCandidateField('industries', updated);
+                            }}
+                            className="ml-1 hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-sm text-gray-400 italic self-center">No industries added</span>
+                    )}
+                  </div>
+
+                  {/* Add Industry Input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      id="new-industry-input"
+                      placeholder="Type industry and press Enter"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          e.preventDefault();
+                          const newIndustry = e.currentTarget.value.trim();
+                          const currentIndustries = candidateData?.industries || [];
+                          if (!currentIndustries.includes(newIndustry)) {
+                            updateCandidateField('industries', [...currentIndustries, newIndustry]);
+                          }
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (e.currentTarget.value.trim()) {
+                          const newIndustry = e.currentTarget.value.trim();
+                          const currentIndustries = candidateData?.industries || [];
+                          if (!currentIndustries.includes(newIndustry)) {
+                            updateCandidateField('industries', [...currentIndustries, newIndustry]);
+                          }
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById('new-industry-input') as HTMLInputElement;
+                        if (input && input.value.trim()) {
+                          const newIndustry = input.value.trim();
+                          const currentIndustries = candidateData?.industries || [];
+                          if (!currentIndustries.includes(newIndustry)) {
+                            updateCandidateField('industries', [...currentIndustries, newIndustry]);
+                          }
+                          input.value = '';
+                          input.focus();
+                        }
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add
+                    </button>
+                  </div>
                   {(!candidateData?.industries || candidateData.industries.length === 0) && (
                     <p className="text-xs text-yellow-600 mt-1">⚠️ No industries found in resume</p>
                   )}
@@ -593,19 +725,89 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
 
                 {/* Other Related Industries */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Other Related Industries
                     {candidateData?.relatedIndustries && candidateData.relatedIndustries.length > 0 && (
-                      <span className="text-xs text-gray-500 ml-2">({candidateData.relatedIndustries.length} found)</span>
+                      <span className="text-xs text-gray-500 ml-2">({candidateData.relatedIndustries.length})</span>
                     )}
                   </label>
-                  <textarea
-                    value={Array.isArray(candidateData?.relatedIndustries) ? candidateData.relatedIndustries.join(', ') : ''}
-                    onChange={(e) => updateCandidateField('relatedIndustries', e.target.value.split(',').map(i => i.trim()).filter(Boolean))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                    rows={2}
-                    placeholder="Enter related industries separated by commas"
-                  />
+                  
+                  {/* Related Industry Tags */}
+                  <div className="flex flex-wrap gap-2 mb-2 min-h-[60px] p-2 border border-gray-300 rounded-lg bg-gray-50">
+                    {Array.isArray(candidateData?.relatedIndustries) && candidateData.relatedIndustries.length > 0 ? (
+                      candidateData.relatedIndustries.map((industry, idx) => (
+                        <div
+                          key={idx}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#10B981] to-[#06B6D4] text-white rounded-full text-sm font-medium shadow-sm hover:shadow-md transition-shadow"
+                        >
+                          <Tag className="w-3 h-3" />
+                          <span>{industry}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = candidateData.relatedIndustries?.filter((_, i) => i !== idx) || [];
+                              updateCandidateField('relatedIndustries', updated);
+                            }}
+                            className="ml-1 hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-sm text-gray-400 italic self-center">No related industries added</span>
+                    )}
+                  </div>
+
+                  {/* Add Related Industry Input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      id="new-related-industry-input"
+                      placeholder="Type related industry and press Enter"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          e.preventDefault();
+                          const newIndustry = e.currentTarget.value.trim();
+                          const currentIndustries = candidateData?.relatedIndustries || [];
+                          if (!currentIndustries.includes(newIndustry)) {
+                            updateCandidateField('relatedIndustries', [...currentIndustries, newIndustry]);
+                          }
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (e.currentTarget.value.trim()) {
+                          const newIndustry = e.currentTarget.value.trim();
+                          const currentIndustries = candidateData?.relatedIndustries || [];
+                          if (!currentIndustries.includes(newIndustry)) {
+                            updateCandidateField('relatedIndustries', [...currentIndustries, newIndustry]);
+                          }
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById('new-related-industry-input') as HTMLInputElement;
+                        if (input && input.value.trim()) {
+                          const newIndustry = input.value.trim();
+                          const currentIndustries = candidateData?.relatedIndustries || [];
+                          if (!currentIndustries.includes(newIndustry)) {
+                            updateCandidateField('relatedIndustries', [...currentIndustries, newIndustry]);
+                          }
+                          input.value = '';
+                          input.focus();
+                        }
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-[#10B981] to-[#06B6D4] text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add
+                    </button>
+                  </div>
                   {(!candidateData?.relatedIndustries || candidateData.relatedIndustries.length === 0) && (
                     <p className="text-xs text-yellow-600 mt-1">⚠️ No related industries found in resume</p>
                   )}
@@ -725,20 +927,90 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
 
                 {/* Company Names */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Company Names
                     {candidateData?.companyNames && candidateData.companyNames.length > 0 && (
-                      <span className="text-xs text-gray-500 ml-2">({candidateData.companyNames.length} found)</span>
+                      <span className="text-xs text-gray-500 ml-2">({candidateData.companyNames.length})</span>
                     )}
                   </label>
-                  <textarea
-                    value={Array.isArray(candidateData?.companyNames) ? candidateData.companyNames.join(', ') : ''}
-                    onChange={(e) => updateCandidateField('companyNames', e.target.value.split(',').map(i => i.trim()).filter(Boolean))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
-                    rows={2}
-                    placeholder="Enter company names separated by commas"
-                  />
-                  {candidateData?.companyNames && candidateData.companyNames.length === 0 && (
+                  
+                  {/* Company Tags */}
+                  <div className="flex flex-wrap gap-2 mb-2 min-h-[60px] p-2 border border-gray-300 rounded-lg bg-gray-50">
+                    {Array.isArray(candidateData?.companyNames) && candidateData.companyNames.length > 0 ? (
+                      candidateData.companyNames.map((company, idx) => (
+                        <div
+                          key={idx}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white rounded-full text-sm font-medium shadow-sm hover:shadow-md transition-shadow"
+                        >
+                          <Briefcase className="w-3 h-3" />
+                          <span>{company}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = candidateData.companyNames?.filter((_, i) => i !== idx) || [];
+                              updateCandidateField('companyNames', updated);
+                            }}
+                            className="ml-1 hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-sm text-gray-400 italic self-center">No companies added</span>
+                    )}
+                  </div>
+
+                  {/* Add Company Input */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      id="new-company-input"
+                      placeholder="Type company name and press Enter"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7C3AED] text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          e.preventDefault();
+                          const newCompany = e.currentTarget.value.trim();
+                          const currentCompanies = candidateData?.companyNames || [];
+                          if (!currentCompanies.includes(newCompany)) {
+                            updateCandidateField('companyNames', [...currentCompanies, newCompany]);
+                          }
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (e.currentTarget.value.trim()) {
+                          const newCompany = e.currentTarget.value.trim();
+                          const currentCompanies = candidateData?.companyNames || [];
+                          if (!currentCompanies.includes(newCompany)) {
+                            updateCandidateField('companyNames', [...currentCompanies, newCompany]);
+                          }
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById('new-company-input') as HTMLInputElement;
+                        if (input && input.value.trim()) {
+                          const newCompany = input.value.trim();
+                          const currentCompanies = candidateData?.companyNames || [];
+                          if (!currentCompanies.includes(newCompany)) {
+                            updateCandidateField('companyNames', [...currentCompanies, newCompany]);
+                          }
+                          input.value = '';
+                          input.focus();
+                        }
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-[#8B5CF6] to-[#EC4899] text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add
+                    </button>
+                  </div>
+                  {(!candidateData?.companyNames || candidateData.companyNames.length === 0) && (
                     <p className="text-xs text-yellow-600 mt-1">⚠️ No company names found in resume</p>
                   )}
                 </div>

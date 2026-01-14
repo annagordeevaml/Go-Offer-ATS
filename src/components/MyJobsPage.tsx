@@ -16,6 +16,10 @@ import { normalizeJobTitle, generateJobTitleEmbedding } from '../services/jobTit
 import { normalizeAllJobTitlesForJobs } from '../utils/normalizeAllJobTitlesForJobs';
 import { normalizeLocation, generateLocationEmbedding } from '../services/locationNormalization';
 import { normalizeAllJobLocations } from '../utils/normalizeAllLocations';
+import { normalizeIndustries, generateIndustriesEmbedding } from '../services/industriesNormalization';
+import { updateAllJobIndustries } from '../utils/updateAllJobIndustries';
+import { updateAllJobSkills } from '../utils/updateAllJobSkills';
+import { normalizeJobSkills } from '../services/skillsNormalization';
 import { Loader2 } from 'lucide-react';
 
 interface MyJobsPageProps {
@@ -34,6 +38,8 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
   const [selectedJobForMatches, setSelectedJobForMatches] = useState<Job | null>(null);
   const [isNormalizingJobTitles, setIsNormalizingJobTitles] = useState(false);
   const [isNormalizingLocations, setIsNormalizingLocations] = useState(false);
+  const [isUpdatingIndustries, setIsUpdatingIndustries] = useState(false);
+  const [isUpdatingJobSkills, setIsUpdatingJobSkills] = useState(false);
 
   // Load jobs from Supabase on component mount - only for current user
   useEffect(() => {
@@ -55,6 +61,7 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
           postedDate: job.posted_date || job.postedDate,
           matchCount: job.match_count || job.matchCount || 0,
           skills: job.skills || [],
+          hardSkills: job.hard_skills || [], // Add hard_skills from database
           status: job.status,
           companyName: job.company_name || job.companyName,
           industry: job.industry,
@@ -63,6 +70,8 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
           workplaceType: job.workplace_type,
           employmentType: job.employment_type,
           seniorityLevel: job.seniority_level,
+          consideringRelocation: job.considering_relocation || false,
+          acceptsRemoteCandidates: job.accepts_remote_candidates || false,
         }));
         setJobs(mappedJobs);
       } else if (error) {
@@ -88,7 +97,22 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
     setIsViewModalOpen(true);
   };
 
-  const handleEdit = (job: Job) => {
+  const handleEdit = async (job: Job) => {
+    // Load hard_skills from database if not already loaded
+    let hardSkills: string[] = job.hardSkills || [];
+    if (!hardSkills || hardSkills.length === 0) {
+      try {
+        const { data: jobData } = await supabase
+          .from('jobs')
+          .select('hard_skills')
+          .eq('id', job.id)
+          .single();
+        hardSkills = jobData?.hard_skills || [];
+      } catch (error) {
+        console.error('Error loading hard_skills:', error);
+      }
+    }
+    
     // Convert industry array to comma-separated string for the form
     const industryString = job.industry && Array.isArray(job.industry) 
       ? job.industry.join(', ')
@@ -98,7 +122,7 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
       title: job.title,
       location: job.location,
       locations: job.locations || (job.location ? [job.location] : []),
-      skills: job.skills,
+      skills: hardSkills.length > 0 ? hardSkills : (job.skills || []), // Use hard_skills if available
       companyName: job.companyName,
       industry: industryString,
       description: job.description || '',
@@ -108,12 +132,14 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
       consideringRelocation: job.consideringRelocation || false,
       acceptsRemoteCandidates: job.acceptsRemoteCandidates || false,
     };
-    setEditingJob({
+    const jobWithHardSkills = {
       ...job,
       title: jobFormData.title,
       location: jobFormData.location,
       skills: jobFormData.skills,
-    });
+      hardSkills: hardSkills, // Pass hard_skills to editingJob
+    };
+    setEditingJob(jobWithHardSkills);
     setIsModalOpen(true);
   };
 
@@ -168,6 +194,30 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
           }
         }
         
+        // Normalize industries and generate embedding for update
+        let normalizedIndustries: string[] = [];
+        let industriesEmbedding: number[] | null = null;
+        
+        if (industryArray && industryArray.length > 0) {
+          try {
+            console.log('Normalizing industries for update:', industryArray);
+            normalizedIndustries = await normalizeIndustries(industryArray);
+            console.log('Normalized industries for update:', normalizedIndustries);
+            
+            if (normalizedIndustries.length > 0) {
+              industriesEmbedding = await generateIndustriesEmbedding(normalizedIndustries);
+              console.log('Industries embedding generated for update:', industriesEmbedding ? 'Success' : 'Failed');
+            }
+          } catch (normalizationError) {
+            console.error('Error normalizing industries:', normalizationError);
+            // Fallback: basic normalization
+            normalizedIndustries = industryArray
+              .map(i => i.trim().toLowerCase())
+              .filter(i => i.length > 0)
+              .filter((i, idx, self) => self.indexOf(i) === idx);
+          }
+        }
+        
         // Update existing job in Supabase - ensure it belongs to current user
         const updateData: any = {
           title: jobData.title,
@@ -177,6 +227,7 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
           skills: skillsArray,
           company_name: jobData.companyName || null,
           industry: industryArray,
+          normalized_industries: normalizedIndustries.length > 0 ? normalizedIndustries : null,
           description: jobData.description || null,
           workplace_type: jobData.workplaceType || 'Remote',
           employment_type: jobData.employmentType || 'Full-time',
@@ -192,6 +243,27 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
         // Add location_embedding if available
         if (locationEmbedding && locationEmbedding.length > 0) {
           updateData.location_embedding = locationEmbedding;
+        }
+        // Add industries_embedding if available
+        if (industriesEmbedding && industriesEmbedding.length > 0) {
+          updateData.industries_embedding = industriesEmbedding;
+        }
+        
+        // Use hard_skills from formData if provided, otherwise extract from description
+        if (jobData.hardSkills && jobData.hardSkills.length > 0) {
+          updateData.hard_skills = jobData.hardSkills;
+        } else if (jobData.description && jobData.description.trim().length > 0) {
+          try {
+            console.log('Extracting skills from job description for update...');
+            const normalizedJobSkills = await normalizeJobSkills(editingJob.id, jobData.description);
+            console.log('Extracted skills for update:', normalizedJobSkills);
+            if (normalizedJobSkills.length > 0) {
+              updateData.hard_skills = normalizedJobSkills;
+            }
+          } catch (skillsError) {
+            console.error('Error extracting skills from job description:', skillsError);
+            // Continue without skills if extraction fails
+          }
         }
         
         // Add unified_titles if available (temporarily commented out until DB column is added)
@@ -289,6 +361,45 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
           }
         }
         
+        // Normalize industries and generate embedding
+        let normalizedIndustries: string[] = [];
+        let industriesEmbedding: number[] | null = null;
+        
+        if (industryArray && industryArray.length > 0) {
+          try {
+            console.log('Normalizing industries:', industryArray);
+            normalizedIndustries = await normalizeIndustries(industryArray);
+            console.log('Normalized industries:', normalizedIndustries);
+            
+            if (normalizedIndustries.length > 0) {
+              industriesEmbedding = await generateIndustriesEmbedding(normalizedIndustries);
+              console.log('Industries embedding generated:', industriesEmbedding ? 'Success' : 'Failed');
+            }
+          } catch (normalizationError) {
+            console.error('Error normalizing industries:', normalizationError);
+            // Fallback: basic normalization
+            normalizedIndustries = industryArray
+              .map(i => i.trim().toLowerCase())
+              .filter(i => i.length > 0)
+              .filter((i, idx, self) => self.indexOf(i) === idx);
+          }
+        }
+        
+        // Use hard_skills from formData if provided, otherwise extract from description
+        let finalHardSkills: string[] = [];
+        if (jobData.hardSkills && jobData.hardSkills.length > 0) {
+          finalHardSkills = jobData.hardSkills;
+        } else if (jobData.description && jobData.description.trim().length > 0) {
+          try {
+            console.log('Extracting skills from job description for new job...');
+            finalHardSkills = await normalizeJobSkills('new', jobData.description);
+            console.log('Extracted skills for new job:', finalHardSkills);
+          } catch (skillsError) {
+            console.error('Error extracting skills from job description:', skillsError);
+            // Continue without skills if extraction fails
+          }
+        }
+        
         // Add new job to Supabase with user_id
         const newJobData: any = {
           title: jobData.title,
@@ -302,6 +413,8 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
           status: 'active',
           company_name: jobData.companyName || null,
           industry: industryArray,
+          normalized_industries: normalizedIndustries.length > 0 ? normalizedIndustries : null,
+          hard_skills: finalHardSkills.length > 0 ? finalHardSkills : null,
           description: jobData.description || null,
           considering_relocation: jobData.consideringRelocation || false,
           // accepts_remote_candidates: jobData.acceptsRemoteCandidates || false, // Temporarily commented out until DB column is added
@@ -324,6 +437,9 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
         }
         if (locationEmbedding && locationEmbedding.length > 0) {
           newJobData.location_embedding = locationEmbedding;
+        }
+        if (industriesEmbedding && industriesEmbedding.length > 0) {
+          newJobData.industries_embedding = industriesEmbedding;
         }
         
         // Add unified_titles if available (temporarily commented out until DB column is added)
@@ -460,6 +576,44 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
     }
   };
 
+  const handleUpdateAllIndustries = async () => {
+    if (!confirm('This will normalize industries and generate embeddings for ALL jobs in the database. This may take a while and use OpenAI API credits. Continue?')) {
+      return;
+    }
+    
+    setIsUpdatingIndustries(true);
+    try {
+      await updateAllJobIndustries();
+      alert('Industries update complete! Check console for details. The page will reload to show updated data.');
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating industries:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Error updating industries:\n\n${errorMessage}\n\nCheck console for more details.`);
+    } finally {
+      setIsUpdatingIndustries(false);
+    }
+  };
+
+  const handleUpdateAllJobSkills = async () => {
+    if (!confirm('This will extract and normalize skills from ALL job descriptions in the database. This may take a while and use OpenAI API credits. Continue?')) {
+      return;
+    }
+    
+    setIsUpdatingJobSkills(true);
+    try {
+      await updateAllJobSkills();
+      alert('Job skills update complete! Check console for details. The page will reload to show updated data.');
+      window.location.reload();
+    } catch (error) {
+      console.error('Error updating job skills:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Error updating job skills:\n\n${errorMessage}\n\nCheck console for more details.`);
+    } finally {
+      setIsUpdatingJobSkills(false);
+    }
+  };
+
   // Show matches page if job is selected
   if (selectedJobForMatches) {
     return (
@@ -514,6 +668,34 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
                       </>
                     ) : (
                       'Normalize All Locations'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleUpdateAllIndustries}
+                    disabled={isUpdatingIndustries}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isUpdatingIndustries ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Update All Industries'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleUpdateAllJobSkills}
+                    disabled={isUpdatingJobSkills}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isUpdatingJobSkills ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Update All Job Skills'
                     )}
                   </button>
                   <button
@@ -736,13 +918,16 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
           title: editingJob.title,
           location: editingJob.location,
           locations: editingJob.locations || (editingJob.location ? [editingJob.location] : []),
-          skills: editingJob.skills,
+          skills: editingJob.hardSkills && editingJob.hardSkills.length > 0 ? editingJob.hardSkills : editingJob.skills,
+          hardSkills: editingJob.hardSkills || editingJob.skills || [],
           companyName: editingJob.companyName,
           industry: editingJob.industry,
           description: editingJob.description || '',
           workplaceType: editingJob.workplaceType,
           employmentType: editingJob.employmentType,
           seniorityLevel: editingJob.seniorityLevel,
+          consideringRelocation: editingJob.consideringRelocation,
+          acceptsRemoteCandidates: editingJob.acceptsRemoteCandidates,
         } : null}
       />
 

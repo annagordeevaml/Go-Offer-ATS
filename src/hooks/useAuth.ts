@@ -7,21 +7,76 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
+    let mounted = true;
+    let subscription: any = null;
+    
+    // Set a shorter timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.warn('Auth check timeout - proceeding without session');
+        setUser(null);
+        setLoading(false);
+      }
+    }, 2000); // 2 second timeout - faster response
+
+    // Try to get session with timeout
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise((resolve) => {
+      setTimeout(() => resolve({ data: { session: null }, error: new Error('Timeout') }), 2000);
     });
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    Promise.race([sessionPromise, timeoutPromise])
+      .then((result: any) => {
+        if (mounted) {
+          clearTimeout(timeoutId);
+          if (result?.data?.session) {
+            setUser(result.data.session.user);
+          } else {
+            setUser(null);
+          }
+          setLoading(false);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          clearTimeout(timeoutId);
+          console.error('Failed to get session:', error);
+          setUser(null);
+          setLoading(false);
+        }
+      });
 
-    return () => subscription.unsubscribe();
+    // Listen for auth changes with error handling
+    try {
+      const {
+        data: { subscription: sub },
+      } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (mounted) {
+          clearTimeout(timeoutId);
+          setUser(session?.user ?? null);
+          setLoading(false);
+        }
+      });
+      subscription = sub;
+    } catch (error) {
+      console.error('Failed to set up auth listener:', error);
+      if (mounted) {
+        clearTimeout(timeoutId);
+        setLoading(false);
+      }
+    }
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+      if (subscription) {
+        try {
+          subscription.unsubscribe();
+        } catch (e) {
+          // Ignore unsubscribe errors
+        }
+      }
+    };
   }, []);
 
   const signOut = async () => {

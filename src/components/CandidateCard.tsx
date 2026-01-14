@@ -22,6 +22,8 @@ import {
   Edit2,
   DollarSign,
   Trash2,
+  Code,
+  X,
 } from 'lucide-react';
 import { Candidate } from '../types';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
@@ -32,13 +34,14 @@ import { extractContacts, removeContactsFromHtml } from '../utils/resumeParser';
 
 interface CandidateCardProps {
   candidate: Candidate;
+  jobHardSkills?: string[]; // Hard skills from the job for skills matching display
   onResumeUpload?: (candidateId: number, resume: { file: File; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } }) => void;
   onCandidateUpdate?: (candidateId: number, updates: Partial<Candidate>) => void;
   onEdit?: (candidate: Candidate) => void;
   onDelete?: (candidateId: number) => void;
 }
 
-const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload, onCandidateUpdate, onEdit, onDelete }) => {
+const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, jobHardSkills, onResumeUpload, onCandidateUpdate, onEdit, onDelete }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRelocationOpen, setIsRelocationOpen] = useState(false);
   const [resume, setResume] = useState<{ file: File | null; htmlContent: string; contacts?: { email: string | null; phone: string | null; linkedin: string | null } } | null>(
@@ -54,6 +57,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
   const [isResumeViewerOpen, setIsResumeViewerOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isRelatedIndustriesOpen, setIsRelatedIndustriesOpen] = useState(false);
+  const [isSkillsModalOpen, setIsSkillsModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const relocationRef = useRef<HTMLDivElement>(null);
 
@@ -199,21 +203,49 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
               <div className="flex items-center gap-1.5">
                 <Target className="w-4 h-4 text-[#7C3AED]" />
                 <span className="text-sm font-bold text-gray-900">
-                  Title: {candidate.titleScore.toFixed(1)}
+                  Title: {candidate.titleScore.toFixed(0)}
                 </span>
               </div>
             </div>
           )}
-          {/* Location Match Score Badge */}
-          {(typeof candidate.locationMatchScore === 'number') && (
+          {/* Industries Score Badge */}
+          {(typeof candidate.industriesScore === 'number') && (
+            <div className="bg-white/95 backdrop-blur-sm border-2 border-white rounded-lg px-3 py-1.5 shadow-lg">
+              <div className="flex items-center gap-1.5">
+                <Briefcase className="w-4 h-4 text-[#10B981]" />
+                <span className="text-sm font-bold text-gray-900">
+                  Industries: {candidate.industriesScore.toFixed(0)}
+                </span>
+              </div>
+            </div>
+          )}
+          {/* Location Score Badge */}
+          {(typeof candidate.locationScore === 'number') && (
             <div className="bg-white/95 backdrop-blur-sm border-2 border-white rounded-lg px-3 py-1.5 shadow-lg">
               <div className="flex items-center gap-1.5">
                 <MapPin className="w-4 h-4 text-[#06B6D4]" />
                 <span className="text-sm font-bold text-gray-900">
-                  Location: {candidate.locationMatchScore.toFixed(1)}
+                  Location: {candidate.locationScore.toFixed(0)}
                 </span>
               </div>
             </div>
+          )}
+          {/* Skills Score Badge */}
+          {(typeof candidate.skillsScore === 'number') && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsSkillsModalOpen(true);
+              }}
+              className="bg-white/95 backdrop-blur-sm border-2 border-white rounded-lg px-3 py-1.5 shadow-lg hover:bg-white transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5">
+                <Code className="w-4 h-4 text-[#F59E0B]" />
+                <span className="text-sm font-bold text-gray-900">
+                  Skills: {candidate.skillsScore.toFixed(0)}%
+                </span>
+              </div>
+            </button>
           )}
         </div>
         <div className="flex items-start justify-between gap-4">
@@ -532,7 +564,7 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
             <div>
               <p className="text-xs uppercase text-gray-500 mb-1.5 font-semibold">SKILLS</p>
               <div className="flex flex-wrap gap-1.5">
-                {candidate.skills.map((skill, index) => (
+                {(candidate.hardSkills && candidate.hardSkills.length > 0 ? candidate.hardSkills : candidate.skills || []).map((skill, index) => (
                   <span
                     key={index}
                     className="bg-purple-50 border border-purple-200 text-purple-700 rounded px-2 py-1 text-xs"
@@ -641,6 +673,79 @@ const CandidateCard: React.FC<CandidateCardProps> = ({ candidate, onResumeUpload
         onClose={() => setIsContactModalOpen(false)}
         candidate={candidate}
       />
+
+      {/* Skills Match Modal */}
+      {isSkillsModalOpen && jobHardSkills && jobHardSkills.length > 0 && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setIsSkillsModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <Code className="w-6 h-6 text-[#F59E0B]" />
+                    Skills Match
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {candidate.name} - {candidate.skillsScore?.toFixed(0)}% match
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsSkillsModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  Required Skills ({jobHardSkills.length}):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {jobHardSkills.map((skill, index) => {
+                    const candidateSkills = candidate.hardSkills || [];
+                    const normalizedCandidateSkills = candidateSkills.map(s => s.toLowerCase().trim());
+                    const hasSkill = normalizedCandidateSkills.includes(skill.toLowerCase().trim());
+                    
+                    return (
+                      <span
+                        key={index}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                          hasSkill
+                            ? 'bg-green-100 text-green-800 border-2 border-green-300 shadow-sm'
+                            : 'bg-gray-100 text-gray-600 border-2 border-gray-200 opacity-60'
+                        }`}
+                      >
+                        {hasSkill && (
+                          <Check className="w-3 h-3 inline mr-1.5 text-green-600" />
+                        )}
+                        {skill}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  Candidate Skills ({candidate.hardSkills?.length || 0}):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {(candidate.hardSkills || []).map((skill, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-800 border-2 border-blue-200"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </>
   );

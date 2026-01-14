@@ -47,24 +47,36 @@ export function semanticSimilarity(vecA: number[], vecB: number[]): number {
 }
 
 /**
- * Calculate title score for matching
- * Formula: title_score = 20 * semantic_similarity(candidate_title_vector, job_title_vector)
+ * Calculate cosine similarity score between two embeddings
+ * Returns a value from 0 to 100 (0-1 normalized and multiplied by 100)
+ */
+export function calculateEmbeddingScore(
+  candidateEmbedding: number[] | null,
+  jobEmbedding: number[] | null
+): number {
+  if (!candidateEmbedding || !jobEmbedding) {
+    return 0;
+  }
+
+  try {
+    const similarity = semanticSimilarity(candidateEmbedding, jobEmbedding);
+    // Convert from 0-1 to 0-100
+    return similarity * 100;
+  } catch (error) {
+    console.error('Error calculating embedding score:', error);
+    return 0;
+  }
+}
+
+/**
+ * Calculate title score for matching (deprecated - use calculateEmbeddingScore)
+ * Formula: title_score = 100 * semantic_similarity(candidate_title_vector, job_title_vector)
  */
 export function calculateTitleScore(
   candidateTitleEmbedding: number[] | null,
   jobTitleEmbedding: number[] | null
 ): number {
-  if (!candidateTitleEmbedding || !jobTitleEmbedding) {
-    return 0;
-  }
-
-  try {
-    const similarity = semanticSimilarity(candidateTitleEmbedding, jobTitleEmbedding);
-    return 20 * similarity;
-  } catch (error) {
-    console.error('Error calculating title score:', error);
-    return 0;
-  }
+  return calculateEmbeddingScore(candidateTitleEmbedding, jobTitleEmbedding);
 }
 
 
