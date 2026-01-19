@@ -7,10 +7,10 @@ if (!apiKey) {
   console.warn('OpenAI API key is not set. Please add VITE_OPENAI_API_KEY to your .env file');
 }
 
-const openai = new OpenAI({
+const openai = apiKey ? new OpenAI({
   apiKey: apiKey,
   dangerouslyAllowBrowser: true,
-});
+}) : null;
 
 export interface ParsedBasicJobData {
   job_title: string;

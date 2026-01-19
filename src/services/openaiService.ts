@@ -6,10 +6,10 @@ if (!apiKey) {
   console.warn('OpenAI API key is not set. Please add VITE_OPENAI_API_KEY to your .env file');
 }
 
-const openai = new OpenAI({
+const openai = apiKey ? new OpenAI({
   apiKey: apiKey,
-  dangerouslyAllowBrowser: true, // Only for development - in production use a backend proxy
-});
+  dangerouslyAllowBrowser: true,
+}) : null;
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
