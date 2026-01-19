@@ -1,36 +1,55 @@
+import { useState, useEffect } from 'react'
+import Header from './components/Header'
+import HeroSection from './components/HeroSection'
+// ВРЕМЕННО БЕЗ SUPABASE
+// import SearchPage from './components/SearchPage'
+// import { useAuth } from './hooks/useAuth'
+
+type Page = 'Star Catalogue' | 'My Jobs' | 'Analytics' | 'Benchmark'
+
 function App() {
+  const [currentPage, setCurrentPage] = useState<Page>('Star Catalogue')
+  // ВРЕМЕННО БЕЗ АУТЕНТИФИКАЦИИ
+  // const { user, loading } = useAuth()
+
+  useEffect(() => {
+    const handleNavigate = (event: CustomEvent) => {
+      const page = event.detail as Page
+      setCurrentPage(page)
+    }
+
+    window.addEventListener('navigate' as any, handleNavigate)
+    return () => {
+      window.removeEventListener('navigate' as any, handleNavigate)
+    }
+  }, [])
+
+  const handleNavigation = (page: Page) => {
+    setCurrentPage(page)
+  }
+
+  // ШАГ 1: Базовая структура с Header и HeroSection
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      background: 'linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 50%, #1a0b2e 100%)',
-      color: 'white',
-      fontFamily: 'system-ui, sans-serif'
-    }}>
-      <div style={{ textAlign: 'center', padding: '2rem' }}>
-        <h1 style={{ fontSize: '3rem', marginBottom: '1rem', background: 'linear-gradient(90deg, #7C3AED, #06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          GoOffer ATS
-        </h1>
-        <p style={{ fontSize: '1.2rem', opacity: 0.8, marginBottom: '2rem' }}>
-          Сайт работает! React загружен успешно.
-        </p>
-        <div style={{ 
-          background: 'rgba(255, 255, 255, 0.1)', 
-          backdropFilter: 'blur(10px)',
-          borderRadius: '1rem',
-          padding: '2rem',
-          border: '1px solid rgba(255, 255, 255, 0.2)'
-        }}>
-          <p style={{ marginBottom: '1rem' }}>
-            ✅ React работает
+    <div className="min-h-screen bg-gradient-to-br from-[#1a0b2e] via-[#2d1b4e] to-[#1a0b2e]">
+      <Header activePage={currentPage} />
+      <HeroSection />
+      
+      <div className="container mx-auto px-4 py-8 text-center">
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl border border-white/20 p-8 max-w-2xl mx-auto">
+          <h2 className="text-2xl font-bold text-white mb-4">
+            Этап 1: Базовая структура восстановлена
+          </h2>
+          <p className="text-white/80 mb-4">
+            ✅ CSS стили подключены
           </p>
-          <p style={{ marginBottom: '1rem' }}>
-            ✅ Vite работает
+          <p className="text-white/80 mb-4">
+            ✅ Header компонент работает
           </p>
-          <p>
-            ✅ Страница загружена
+          <p className="text-white/80 mb-4">
+            ✅ HeroSection компонент работает
+          </p>
+          <p className="text-white/60 text-sm mt-6">
+            Следующий шаг: восстановление SearchPage
           </p>
         </div>
       </div>
