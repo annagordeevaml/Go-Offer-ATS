@@ -24,9 +24,10 @@ import { Loader2 } from 'lucide-react';
 
 interface MyJobsPageProps {
   onNavigate?: (page: 'Star Catalogue' | 'My Jobs' | 'Analytics') => void;
+  hideHeader?: boolean;
 }
 
-const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
+const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate, hideHeader = false }) => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const { user } = useAuth();
 
@@ -625,21 +626,22 @@ const MyJobsPage: React.FC<MyJobsPageProps> = ({ onNavigate }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#E8E9EB] via-[#E0E2E5] to-[#E8E9EB]">
-      {/* Header with background */}
-      <div 
-        className="relative w-full bg-cover bg-center bg-no-repeat"
-        style={{
-          backgroundImage: `url(${galaxyBg})`,
-          filter: 'contrast(1.15) saturate(1.1)',
-        }}
-      >
-        <div className="hero-gradient-overlay"></div>
-        <Header activePage="My Jobs" />
-        <div className="max-w-7xl mx-auto px-8 py-12 relative z-10">
-          <HeroSection />
+    <div className={hideHeader ? '' : 'min-h-screen bg-gradient-to-br from-[#E8E9EB] via-[#E0E2E5] to-[#E8E9EB]'}>
+      {!hideHeader && (
+        <div 
+          className="relative w-full bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: `url(${galaxyBg})`,
+            filter: 'contrast(1.15) saturate(1.1)',
+          }}
+        >
+          <div className="hero-gradient-overlay"></div>
+          <Header activePage="My Jobs" />
+          <div className="max-w-7xl mx-auto px-8 py-12 relative z-10">
+            <HeroSection />
+          </div>
         </div>
-      </div>
+      )}
       
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
         {/* Page Header Section */}

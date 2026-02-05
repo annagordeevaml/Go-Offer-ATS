@@ -31,9 +31,10 @@ interface ExampleCard {
 
 interface SearchPageProps {
   onNavigate?: (page: 'Star Catalogue' | 'My Jobs' | 'Analytics') => void;
+  hideHeader?: boolean;
 }
 
-const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
+const SearchPage: React.FC<SearchPageProps> = ({ onNavigate, hideHeader = false }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -51,7 +52,7 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
     onConfirm: () => void;
     onCancel: () => void;
   } | null>(null);
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   
   const [candidates, setCandidates] = useState<Candidate[]>([]);
 
@@ -365,33 +366,11 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
       )
     : candidates;
 
+  // If hideHeader is true, just return main content without wrapper
+  if (hideHeader) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#E8E9EB] via-[#E0E2E5] to-[#E8E9EB] relative overflow-hidden">
-      {/* Common background for Header and HeroSection - single continuous image */}
-      <div 
-        className="hero-gradient-overlay relative w-full"
-        style={{
-          backgroundImage: `url(${galaxyBg})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center top',
-          backgroundRepeat: 'no-repeat',
-          backgroundAttachment: 'scroll',
-          border: 'none',
-          outline: 'none',
-          boxShadow: 'none',
-          filter: 'contrast(1.15) saturate(1.1)',
-          WebkitBackfaceVisibility: 'hidden',
-          backfaceVisibility: 'hidden',
-          transform: 'translateZ(0)',
-          willChange: 'transform',
-          animation: 'dawn-background 12s ease-in-out infinite',
-        }}
-      >
-        <Header activePage="Star Catalogue" />
-        <HeroSection />
-      </div>
-
-      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16" style={{ borderTop: 'none', outline: 'none', boxShadow: 'none' }}>
+      <>
+        <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
 
         {/* Search Bar */}
         <section className="mb-8">
@@ -477,24 +456,21 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
               </h2>
             </div>
             <div className="flex items-center gap-3">
-              {/* Temporary Logout Button - Very Visible - Always Shown */}
+              {/* Logout Button */}
               <button
                 onClick={async () => {
                   try {
-                    const { supabase } = await import('../lib/supabaseClient');
-                    await supabase.auth.signOut();
-                    localStorage.clear();
-                    sessionStorage.clear();
-                    window.location.href = '/';
+                    await signOut();
                   } catch (error) {
                     console.error('Logout error:', error);
+                    // Fallback: clear everything and redirect
                     localStorage.clear();
                     sessionStorage.clear();
                     window.location.href = '/';
                   }
                 }}
                 className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-lg transition-colors duration-200 flex items-center gap-2 shadow-xl border-2 border-red-800"
-                title="Logout (Temporary - Click to logout)"
+                title="Logout"
                 style={{ zIndex: 9999 }}
               >
                 <LogOut className="w-5 h-5" />
@@ -1204,6 +1180,760 @@ const SearchPage: React.FC<SearchPageProps> = ({ onNavigate }) => {
                 } catch (embeddingError) {
                   console.error('Error generating embeddings:', embeddingError);
                   // Don't block the save operation if embeddings fail
+                }
+              }
+              setIsAddModalOpen(false);
+            }
+          } catch (error) {
+            console.error('Error saving candidate:', error);
+            alert('An unexpected error occurred. Please try again.');
+          }
+        }}
+        editingCandidate={editingCandidate}
+      />
+      </>
+    )
+  }
+
+  // Default render with header
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#E8E9EB] via-[#E0E2E5] to-[#E8E9EB] relative overflow-hidden">
+      {/* Common background for Header and HeroSection - single continuous image */}
+      <div 
+        className="hero-gradient-overlay relative w-full"
+        style={{
+          backgroundImage: `url(${galaxyBg})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+          backgroundRepeat: 'no-repeat',
+          backgroundAttachment: 'scroll',
+          border: 'none',
+          outline: 'none',
+          boxShadow: 'none',
+          filter: 'contrast(1.15) saturate(1.1)',
+          WebkitBackfaceVisibility: 'hidden',
+          backfaceVisibility: 'hidden',
+          transform: 'translateZ(0)',
+          willChange: 'transform',
+          animation: 'dawn-background 12s ease-in-out infinite',
+        }}
+      >
+        <Header activePage="Star Catalogue" />
+        <HeroSection />
+    </div>
+
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16" style={{ borderTop: 'none', outline: 'none', boxShadow: 'none' }}>
+
+        {/* Search Bar */}
+        <section className="mb-8">
+          <form onSubmit={handleSearch} className="relative">
+            <div className="search-bar-container relative flex items-center gap-3 rounded-2xl p-2 focus-within:ring-0 transition-all duration-300">
+              <Search className="absolute left-4 text-gray-600 w-5 h-5 z-10" aria-hidden="true" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Product manager with EdTech experience..."
+                className="flex-1 pl-12 pr-4 py-4 bg-transparent text-gray-900 placeholder:text-gray-500 focus:outline-none text-lg z-10"
+                aria-label="Search for candidates"
+              />
+              <button
+                type="submit"
+                className="search-button px-8 py-4 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white font-semibold rounded-full hover:shadow-[0_0_20px_rgba(124,58,237,0.6)] transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#06B6D4] focus:ring-offset-2 focus:ring-offset-transparent z-10"
+              >
+                Search
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {/* Filter Chips */}
+        <section className="mb-8">
+          <p className="text-gray-600 text-sm mb-4 text-center">or refine with filters ↓</p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {filterOptions.map((filter) => (
+              <button
+                key={filter}
+                onClick={() => handleFilterClick(filter)}
+                className={`px-6 py-2 rounded-full border-2 border-[#7C3AED] text-gray-700 font-medium hover:bg-purple-50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] focus:ring-offset-2 focus:ring-offset-transparent ${
+                  activeFilter === filter ? 'bg-purple-50 shadow-[0_0_15px_rgba(124,58,237,0.2)]' : ''
+                }`}
+                aria-label={`Filter by ${filter}`}
+              >
+                {filter}
+                <ChevronDown className="inline-block ml-2 w-4 h-4" aria-hidden="true" />
+              </button>
+            ))}
+            <button
+              onClick={() => handleFilterClick('More Filters')}
+              className="px-6 py-2 rounded-full border-2 border-[#7C3AED] text-gray-700 font-medium hover:bg-purple-50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] focus:ring-offset-2 focus:ring-offset-transparent"
+              aria-label="More filters"
+            >
+              More Filters
+            </button>
+          </div>
+        </section>
+
+        {/* Empty State / Example Cards */}
+        {!searchQuery && (
+          <section className="mb-8">
+            <p className="text-gray-600 text-center mb-6 text-lg">Try searching:</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {exampleCards.map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => handleExampleClick(card.title)}
+                  className="bg-white rounded-xl p-6 border border-gray-200 hover:border-[#7C3AED] hover:shadow-lg transition-all duration-300 hover:scale-105 text-left focus:outline-none focus:ring-2 focus:ring-[#7C3AED] focus:ring-offset-2 focus:ring-offset-transparent group"
+                  aria-label={`Search for ${card.title}`}
+                >
+                  <h3 className="text-gray-900 font-semibold text-lg mb-2 group-hover:text-[#7C3AED] transition-colors duration-300">
+                    {card.title}
+                  </h3>
+                  <p className="text-gray-600 text-sm">{card.description}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Results Header */}
+        <section className="mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                <span className="bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] bg-clip-text text-transparent">
+                  {filteredCandidates.length}
+                </span>{' '}
+                <span className="text-gray-600">candidates found</span>
+              </h2>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Logout Button */}
+              <button
+                onClick={async () => {
+                  try {
+                    await signOut();
+                  } catch (error) {
+                    console.error('Logout error:', error);
+                    // Fallback: clear everything and redirect
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.href = '/';
+                  }
+                }}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-lg transition-colors duration-200 flex items-center gap-2 shadow-xl border-2 border-red-800"
+                title="Logout"
+                style={{ zIndex: 9999 }}
+              >
+                <LogOut className="w-5 h-5" />
+                <span>LOGOUT</span>
+              </button>
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white rounded-lg hover:opacity-90 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] font-semibold"
+              >
+                <Plus className="w-4 h-4" />
+                Add Candidate
+              </button>
+              {user && (
+                <>
+                  <GenerateEmbeddingsButton 
+                    onComplete={() => {
+                      // Optionally reload candidates after embeddings are generated
+                      window.location.reload();
+                    }}
+                  />
+                  <button
+                    onClick={handleNormalizeAllLocations}
+                    disabled={isNormalizingLocations}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isNormalizingLocations ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Normalizing...
+                      </>
+                    ) : (
+                      'Normalize All Locations'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleUpdateAllSkills}
+                    disabled={isUpdatingSkills}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isUpdatingSkills ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Update All Skills'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleUpdateAllIndustries}
+                    disabled={isUpdatingIndustries}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isUpdatingIndustries ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      'Update All Industries'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleReparseAllResumes}
+                    disabled={isReparsingResumes}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isReparsingResumes ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Re-parsing...
+                      </>
+                    ) : (
+                      'Re-parse All Resumes'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleNormalizeAllJobTitles}
+                    disabled={isNormalizingJobTitles}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isNormalizingJobTitles ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Normalizing...
+                      </>
+                    ) : (
+                      'Normalize All Job Titles'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleUpdateAllUnifiedTitles}
+                    disabled={isUpdatingTitles}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isUpdatingTitles ? 'Updating...' : 'Update All Unified Titles'}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={handleFilters}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-[#7C3AED] text-[#7C3AED] rounded-lg hover:bg-purple-50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+              >
+                <Filter className="w-4 h-4" />
+                Filters
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Candidates List */}
+        <section>
+          <div className="flex flex-col gap-3">
+            {filteredCandidates.map((candidate, index) => (
+              <motion.div
+                key={candidate.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <CandidateCard 
+                  candidate={candidate} 
+                  onResumeUpload={handleResumeUpload}
+                  onCandidateUpdate={handleCandidateUpdate}
+                  onEdit={(candidate) => setEditingCandidate(candidate)}
+                  onDelete={handleDeleteCandidate}
+                />
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      </main>
+      <ChatBot />
+      
+      {/* Duplicate Warning Modal */}
+      {duplicateWarning && duplicateWarning.show && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-amber-400 to-orange-500 p-4 rounded-t-xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-white font-semibold text-lg">Duplicate Candidate</h3>
+              </div>
+              <button
+                onClick={() => {
+                  duplicateWarning?.onCancel();
+                }}
+                className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                A candidate with email <span className="font-semibold text-[#7C3AED]">"{duplicateWarning.email}"</span> already exists in the database.
+              </p>
+              
+              <div className="bg-gray-50 rounded-lg p-4 mb-6 border border-gray-200">
+                <p className="text-sm text-gray-600 mb-1">Existing candidate:</p>
+                <p className="text-lg font-semibold text-gray-900">{duplicateWarning.existingName}</p>
+              </div>
+
+              <p className="text-gray-600 text-sm mb-6">
+                Do you really want to add a duplicate candidate?
+              </p>
+
+              {/* Buttons */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    duplicateWarning?.onCancel();
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    duplicateWarning?.onConfirm();
+                  }}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-[#7C3AED] to-[#06B6D4] text-white rounded-lg font-medium hover:opacity-90 transition-opacity duration-200 shadow-md"
+                >
+                  Add Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AddCandidateModal
+        open={isAddModalOpen || editingCandidate !== null}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingCandidate(null);
+        }}
+        onSave={async (candidate) => {
+          try {
+            // Normalize job title and generate embedding
+            let normalizedJobTitle = '';
+            let jobTitleEmbedding: number[] | null = null;
+            
+            if (candidate.jobTitle && candidate.jobTitle.trim()) {
+              try {
+                console.log('Normalizing job title:', candidate.jobTitle);
+                normalizedJobTitle = await normalizeJobTitle(candidate.jobTitle);
+                console.log('Normalized job title:', normalizedJobTitle);
+                
+                if (normalizedJobTitle) {
+                  jobTitleEmbedding = await generateJobTitleEmbedding(normalizedJobTitle);
+                  console.log('Job title embedding generated:', jobTitleEmbedding ? 'Success' : 'Failed');
+                }
+              } catch (normalizationError) {
+                console.error('Error normalizing job title:', normalizationError);
+                // Continue with original title if normalization fails
+                normalizedJobTitle = candidate.jobTitle;
+              }
+            }
+            
+            // Normalize skills if they exist and haven't been normalized yet
+            let normalizedSkills: string[] = candidate.skills || [];
+            if (normalizedSkills.length > 0) {
+              try {
+                const { normalizeSkills } = await import('../services/skillsNormalization');
+                normalizedSkills = await normalizeSkills(normalizedSkills);
+                console.log('Normalized skills for new candidate:', normalizedSkills);
+              } catch (normalizationError) {
+                console.error('Error normalizing skills:', normalizationError);
+                // Fallback: basic normalization
+                normalizedSkills = normalizedSkills.map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
+              }
+            }
+            
+            // Normalize industries if they exist
+            let normalizedIndustries: string[] = [];
+            let industriesEmbedding: number[] | null = null;
+            const industries = candidate.industries || [];
+            const relatedIndustries = candidate.relatedIndustries || [];
+            
+            if (industries.length > 0 || relatedIndustries.length > 0) {
+              try {
+                console.log('Normalizing industries for new candidate:', { industries, relatedIndustries });
+                normalizedIndustries = await normalizeCandidateIndustries(industries, relatedIndustries);
+                console.log('Normalized industries:', normalizedIndustries);
+                
+                if (normalizedIndustries.length > 0) {
+                  industriesEmbedding = await generateIndustriesEmbedding(normalizedIndustries);
+                  console.log('Industries embedding generated:', industriesEmbedding ? 'Success' : 'Failed');
+                }
+              } catch (normalizationError) {
+                console.error('Error normalizing industries:', normalizationError);
+                // Fallback: basic normalization
+                normalizedIndustries = [...industries, ...relatedIndustries]
+                  .map(i => i.trim().toLowerCase())
+                  .filter(i => i.length > 0)
+                  .filter((i, idx, self) => self.indexOf(i) === idx);
+              }
+            }
+            
+            // Prepare data for Supabase (convert to snake_case)
+            const candidateData: any = {
+              name: candidate.name,
+              job_title: candidate.jobTitle,
+              normalized_job_title: normalizedJobTitle || null,
+              location: candidate.location,
+              experience: candidate.experience || null,
+              availability: candidate.availability || null,
+              ready_to_relocate_to: candidate.readyToRelocateTo || [],
+              last_updated: candidate.lastUpdated || new Date().toISOString().split('T')[0],
+              match_score: candidate.matchScore || 0,
+              status: candidate.status || 'actively_looking',
+              industries: candidate.industries || [],
+              related_industries: candidate.relatedIndustries || [],
+              normalized_industries: normalizedIndustries.length > 0 ? normalizedIndustries : null,
+              company_names: candidate.companyNames || [],
+              skills: normalizedSkills, // Use normalized skills (legacy)
+              hard_skills: normalizedSkills, // Save to new hard_skills column
+              summary: candidate.summary || null,
+              social_links: candidate.socialLinks || {},
+              calendly: candidate.calendly || null,
+              salary_min: candidate.salaryMin || null,
+              salary_max: candidate.salaryMax || null,
+              salary_unit: candidate.salaryUnit || 'year',
+              unified_titles: candidate.unifiedTitles || [],
+              resume_text: candidate.resume?.htmlContent ? 
+                // Extract plain text from HTML for embedding
+                candidate.resume.htmlContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() 
+                : null,
+              resume_data: candidate.resume ? {
+                html_content: candidate.resume.htmlContent || '',
+                contacts: candidate.resume.contacts || {},
+              } : null,
+              created_by_user_id: user?.id || null,
+            };
+
+            // Add industries embedding if available
+            if (industriesEmbedding && industriesEmbedding.length > 0) {
+              candidateData.industries_embedding = industriesEmbedding;
+            }
+
+            if (editingCandidate) {
+              // Normalize job title and generate embedding for update
+              let normalizedJobTitle = '';
+              let jobTitleEmbedding: number[] | null = null;
+              
+              if (candidate.jobTitle && candidate.jobTitle.trim()) {
+                try {
+                  console.log('Normalizing job title for update:', candidate.jobTitle);
+                  normalizedJobTitle = await normalizeJobTitle(candidate.jobTitle);
+                  console.log('Normalized job title:', normalizedJobTitle);
+                  
+                  if (normalizedJobTitle) {
+                    jobTitleEmbedding = await generateJobTitleEmbedding(normalizedJobTitle);
+                    console.log('Job title embedding generated:', jobTitleEmbedding ? 'Success' : 'Failed');
+                  }
+                } catch (normalizationError) {
+                  console.error('Error normalizing job title:', normalizationError);
+                  normalizedJobTitle = candidate.jobTitle;
+                }
+              }
+              
+              // Normalize location and generate embedding for update
+              let normalizedLocation = '';
+              let locationEmbedding: number[] | null = null;
+              
+              if (candidate.location && candidate.location.trim()) {
+                try {
+                  console.log('Normalizing location for update:', candidate.location);
+                  normalizedLocation = await normalizeLocation(candidate.location);
+                  console.log('Normalized location:', normalizedLocation);
+                  
+                  if (normalizedLocation) {
+                    locationEmbedding = await generateLocationEmbedding(normalizedLocation);
+                    console.log('Location embedding generated:', locationEmbedding ? 'Success' : 'Failed');
+                  }
+                } catch (normalizationError) {
+                  console.error('Error normalizing location:', normalizationError);
+                  normalizedLocation = candidate.location.toLowerCase().trim();
+                }
+              }
+              
+              // Normalize skills for update
+              let normalizedSkillsForUpdate: string[] = candidate.skills || [];
+              if (normalizedSkillsForUpdate.length > 0) {
+                try {
+                  const { normalizeSkills } = await import('../services/skillsNormalization');
+                  normalizedSkillsForUpdate = await normalizeSkills(normalizedSkillsForUpdate);
+                  console.log('Normalized skills for update:', normalizedSkillsForUpdate);
+                } catch (normalizationError) {
+                  console.error('Error normalizing skills:', normalizationError);
+                  // Fallback: basic normalization
+                  normalizedSkillsForUpdate = normalizedSkillsForUpdate.map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
+                }
+              }
+              
+              // Normalize industries for update
+              let normalizedIndustriesForUpdate: string[] = [];
+              let industriesEmbeddingForUpdate: number[] | null = null;
+              const industriesForUpdate = candidate.industries || [];
+              const relatedIndustriesForUpdate = candidate.relatedIndustries || [];
+              
+              if (industriesForUpdate.length > 0 || relatedIndustriesForUpdate.length > 0) {
+                try {
+                  console.log('Normalizing industries for update:', { industries: industriesForUpdate, relatedIndustries: relatedIndustriesForUpdate });
+                  normalizedIndustriesForUpdate = await normalizeCandidateIndustries(industriesForUpdate, relatedIndustriesForUpdate);
+                  console.log('Normalized industries for update:', normalizedIndustriesForUpdate);
+                  
+                  if (normalizedIndustriesForUpdate.length > 0) {
+                    industriesEmbeddingForUpdate = await generateIndustriesEmbedding(normalizedIndustriesForUpdate);
+                    console.log('Industries embedding generated for update:', industriesEmbeddingForUpdate ? 'Success' : 'Failed');
+                  }
+                } catch (normalizationError) {
+                  console.error('Error normalizing industries:', normalizationError);
+                  // Fallback: basic normalization
+                  normalizedIndustriesForUpdate = [...industriesForUpdate, ...relatedIndustriesForUpdate]
+                    .map(i => i.trim().toLowerCase())
+                    .filter(i => i.length > 0)
+                    .filter((i, idx, self) => self.indexOf(i) === idx);
+                }
+              }
+              
+              // Create update data object
+              const updateData: any = {
+                name: candidate.name,
+                job_title: candidate.jobTitle,
+                normalized_job_title: normalizedJobTitle || null,
+                location: candidate.location,
+                normalized_location: normalizedLocation || null,
+                experience: candidate.experience || null,
+                availability: candidate.availability || null,
+                ready_to_relocate_to: candidate.readyToRelocateTo || [],
+                last_updated: candidate.lastUpdated || new Date().toISOString().split('T')[0],
+                match_score: candidate.matchScore || 0,
+                status: candidate.status || 'actively_looking',
+                industries: candidate.industries || [],
+                related_industries: candidate.relatedIndustries || [],
+                company_names: candidate.companyNames || [],
+                skills: normalizedSkillsForUpdate,
+                hard_skills: normalizedSkillsForUpdate,
+                summary: candidate.summary || null,
+                social_links: candidate.socialLinks || {},
+                calendly: candidate.calendly || null,
+                salary_min: candidate.salaryMin || null,
+                salary_max: candidate.salaryMax || null,
+                salary_unit: candidate.salaryUnit || 'year',
+                unified_titles: candidate.unifiedTitles || [],
+                resume_data: candidate.resume ? {
+                  html_content: candidate.resume.htmlContent || '',
+                  contacts: candidate.resume.contacts || {},
+                } : null,
+              };
+              
+              if (normalizedIndustriesForUpdate.length > 0) {
+                updateData.normalized_industries = normalizedIndustriesForUpdate;
+              }
+              
+              if (jobTitleEmbedding && jobTitleEmbedding.length > 0) {
+                updateData.job_title_embedding = jobTitleEmbedding;
+              }
+              if (locationEmbedding && locationEmbedding.length > 0) {
+                updateData.location_embedding = locationEmbedding;
+              }
+              if (industriesEmbeddingForUpdate && industriesEmbeddingForUpdate.length > 0) {
+                updateData.industries_embedding = industriesEmbeddingForUpdate;
+              }
+              
+              // Update existing candidate in Supabase
+              const { data, error } = await supabase
+                .from('candidates')
+                .update(updateData)
+                .eq('id', editingCandidate.id)
+                .select();
+
+              if (error) {
+                console.error('Error updating candidate:', error);
+                alert('Failed to update candidate. Please check if you have permission to update candidates.');
+                return;
+              }
+
+              // Update unified titles in both tables
+              if (candidate.unifiedTitles !== undefined) {
+                await supabase
+                  .from('candidate_unified_titles')
+                  .delete()
+                  .eq('candidate_id', editingCandidate.id);
+                
+                if (candidate.unifiedTitles.length > 0) {
+                  const titlesToInsert = candidate.unifiedTitles.map(title => ({
+                    candidate_id: editingCandidate.id,
+                    unified_title: title,
+                  }));
+                  
+                  await supabase
+                    .from('candidate_unified_titles')
+                    .insert(titlesToInsert);
+                }
+                
+                try {
+                  await supabase
+                    .from('candidates')
+                    .update({ unified_titles: candidate.unifiedTitles })
+                    .eq('id', editingCandidate.id);
+                } catch (err) {
+                  console.warn('Could not update unified_titles column:', err);
+                }
+              }
+
+              // Update local state
+              if (data && data[0]) {
+                const updatedCandidate: Candidate = {
+                  ...candidate,
+                  id: data[0].id,
+                  unifiedTitles: candidate.unifiedTitles || [],
+                };
+                setCandidates((prev) =>
+                  prev.map((c) => (c.id === candidate.id ? updatedCandidate : c))
+                );
+                
+                // Generate embeddings for the updated candidate
+                try {
+                  await generateCandidateEmbeddings(data[0].id);
+                  console.log('Embeddings generated successfully for candidate', data[0].id);
+                } catch (embeddingError) {
+                  console.error('Error generating embeddings:', embeddingError);
+                }
+              }
+              setEditingCandidate(null);
+            } else {
+              // Check for duplicate by email before inserting
+              const candidateEmail = candidate.resume?.contacts?.email || 
+                                    (candidate.resume?.contacts as any)?.email;
+              
+              if (candidateEmail) {
+                const localDuplicate = candidates.find(c => {
+                  const email = c.resume?.contacts?.email;
+                  return email && email.toLowerCase() === candidateEmail.toLowerCase();
+                });
+                
+                let shouldContinue = true;
+                
+                if (localDuplicate) {
+                  shouldContinue = await new Promise<boolean>((resolve) => {
+                    setDuplicateWarning({
+                      show: true,
+                      email: candidateEmail,
+                      existingName: localDuplicate.name,
+                      onConfirm: () => {
+                        setDuplicateWarning(null);
+                        resolve(true);
+                      },
+                      onCancel: () => {
+                        setDuplicateWarning(null);
+                        resolve(false);
+                      },
+                    });
+                  });
+                } else {
+                  const { data: existingCandidates, error: searchError } = await supabase
+                    .from('candidates')
+                    .select('id, name, resume_data')
+                    .eq('resume_data->contacts->>email', candidateEmail);
+                  
+                  if (searchError) {
+                    console.error('Error checking for duplicates:', searchError);
+                    shouldContinue = true;
+                  } else if (existingCandidates && existingCandidates.length > 0) {
+                    const existingCandidate = existingCandidates[0];
+                    const existingName = existingCandidate.name || 'Unknown';
+                    shouldContinue = await new Promise<boolean>((resolve) => {
+                      setDuplicateWarning({
+                        show: true,
+                        email: candidateEmail,
+                        existingName: existingName,
+                        onConfirm: () => {
+                          setDuplicateWarning(null);
+                          resolve(true);
+                        },
+                        onCancel: () => {
+                          setDuplicateWarning(null);
+                          resolve(false);
+                        },
+                      });
+                    });
+                  }
+                }
+
+                if (!shouldContinue) {
+                  return;
+                }
+              }
+              
+              // Add job_title_embedding if available
+              if (jobTitleEmbedding && jobTitleEmbedding.length > 0) {
+                candidateData.job_title_embedding = jobTitleEmbedding;
+              }
+              
+              // Add new candidate to Supabase
+              const { data, error } = await supabase
+                .from('candidates')
+                .insert([candidateData])
+                .select();
+
+              if (error) {
+                console.error('Error saving candidate:', error);
+                alert('Failed to save candidate. Please check if you have permission to add candidates.');
+                return;
+              }
+
+              // Save unified titles in both tables
+              if (candidate.unifiedTitles !== undefined && data && data[0]) {
+                if (candidate.unifiedTitles.length > 0) {
+                  const titlesToInsert = candidate.unifiedTitles.map(title => ({
+                    candidate_id: data[0].id,
+                    unified_title: title,
+                  }));
+                  
+                  await supabase
+                    .from('candidate_unified_titles')
+                    .insert(titlesToInsert);
+                }
+                
+                try {
+                  await supabase
+                    .from('candidates')
+                    .update({ unified_titles: candidate.unifiedTitles })
+                    .eq('id', data[0].id);
+                } catch (err) {
+                  console.warn('Could not update unified_titles column:', err);
+                }
+              }
+
+              // Update local state with new candidate from DB
+              if (data && data[0]) {
+                const newCandidate: Candidate = {
+                  ...candidate,
+                  id: data[0].id,
+                  unifiedTitles: candidate.unifiedTitles || [],
+                };
+                setCandidates((prev) => [newCandidate, ...prev]);
+                
+                // Generate embeddings for the new candidate
+                try {
+                  await generateCandidateEmbeddings(data[0].id);
+                  console.log('Embeddings generated successfully for new candidate', data[0].id);
+                } catch (embeddingError) {
+                  console.error('Error generating embeddings:', embeddingError);
                 }
               }
               setIsAddModalOpen(false);
