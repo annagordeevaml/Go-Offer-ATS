@@ -865,4 +865,3 @@ const AddCandidateModal: React.FC<AddCandidateModalProps> = ({ open, onClose, on
 };
 
 export default AddCandidateModal;
-
